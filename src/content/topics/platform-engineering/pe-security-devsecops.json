@@ -1,0 +1,57 @@
+{
+  "id": "pe-security-devsecops",
+  "title": "Security & DevSecOps",
+  "track": "platform-engineering",
+  "summary": "Shift-left security, SAST/DAST, secrets management, OWASP Top 10 for APIs, and secure supply chain.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## Shift-Left Security\n\nShift-left means moving security checks earlier in the SDLC — finding vulnerabilities during development rather than in production. The later a bug is found, the more expensive it is to fix.\n\n```\nCost to fix:\nDesign:   $1\nDev:      $10\nTest:     $100\nProd:     $10,000+\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "DevSecOps Pipeline",
+      "content": "graph LR\n    Code[Code] -->|SAST\\nSonarQube, SpotBugs| Commit[Commit]\n    Commit -->|Secret scanning\\nGitGuardian, truffleHog| Build[Build]\n    Build -->|Dependency scan\\nOWASP Dependency-Check| Test[Test]\n    Test -->|Container scan\\nTrivy, Snyk| Image[Container Image]\n    Image -->|DAST\\nOWASP ZAP| Deploy[Deploy]\n    Deploy -->|Runtime protection\\nFalco, WAF| Prod[Production]\n    style Code fill:#4f46e5,color:#fff\n    style Prod fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## OWASP API Security Top 10\n\n| # | Vulnerability | Prevention |\n|---|---|---|\n| 1 | **Broken Object Level Authorization** | Validate user owns resource before every access |\n| 2 | **Broken Authentication** | Strong JWT validation, proper session management |\n| 3 | **Broken Object Property Level Auth** | Filter what fields users can read/write |\n| 4 | **Unrestricted Resource Consumption** | Rate limiting, request size limits |\n| 5 | **Broken Function Level Authorization** | Check permissions, not just authentication |\n| 6 | **Unrestricted Access to Sensitive Flows** | Rate limit sensitive endpoints (login, forgot password) |\n| 7 | **Server Side Request Forgery (SSRF)** | Validate/allowlist URLs in user input |\n| 8 | **Security Misconfiguration** | Disable debug, restrict CORS, set security headers |\n| 9 | **Improper Inventory Management** | Document and retire old API versions |\n| 10 | **Unsafe Consumption of APIs** | Validate and sanitize data from external APIs |"
+    },
+    {
+      "type": "markdown",
+      "content": "## Broken Object Level Authorization (BOLA)\n\nThe most common API vulnerability. Occurs when an API exposes object IDs and doesn't verify the requester owns the resource.\n\n```java\n// VULNERABLE\n@GetMapping(\"/orders/{orderId}\")\npublic Order getOrder(@PathVariable Long orderId) {\n    return orderRepo.findById(orderId).orElseThrow();\n    // Any authenticated user can see ANY order by changing the ID!\n}\n\n// SECURE\n@GetMapping(\"/orders/{orderId}\")\npublic Order getOrder(@PathVariable Long orderId,\n                      Authentication auth) {\n    Order order = orderRepo.findById(orderId).orElseThrow();\n    if (!order.getCustomerId().equals(auth.getName())) {\n        throw new AccessDeniedException(\"Not your order\");\n    }\n    return order;\n}\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Secrets Management\n\nNever hardcode secrets. Never commit them to Git.\n\n### Hierarchy of secrets management:\n1. **Environment variables** — basic, works everywhere\n2. **Kubernetes Secrets** — base64 encoded, better with encryption at rest\n3. **Vault (HashiCorp)** — dynamic secrets, audit log, auto-rotation\n4. **Cloud-native** — AWS Secrets Manager, GCP Secret Manager, Azure Key Vault\n\n### Spring + Vault\n```yaml\n# application.yml\nspring:\n  cloud:\n    vault:\n      host: vault.internal\n      port: 8200\n      authentication: KUBERNETES  # use K8s service account token\n      kv:\n        enabled: true\n        backend: secret\n      # Vault path: secret/order-service/production\n\n# Result: vault secret auto-injected as Spring properties\n# ${db.password} comes from Vault, not application.properties\n```\n\n### Secret Scanning in CI\n```yaml\n# GitHub Actions\n- name: Scan for secrets\n  uses: trufflesecurity/trufflehog@main\n  with:\n    path: ./\n    base: main\n    extra_args: --only-verified\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Security Headers\n\n```java\n@Configuration\npublic class SecurityHeadersConfig {\n    @Bean\n    public SecurityFilterChain headers(HttpSecurity http) throws Exception {\n        return http\n            .headers(headers -> headers\n                .contentSecurityPolicy(csp -> csp\n                    .policyDirectives(\"default-src 'self'; script-src 'self'\"))\n                .frameOptions(frame -> frame.deny())         // Prevent clickjacking\n                .xssProtection(xss -> xss.enable())         // XSS protection\n                .referrerPolicy(rp -> rp                    // Limit referrer\n                    .policy(STRICT_ORIGIN_WHEN_CROSS_ORIGIN))\n            )\n            .build();\n    }\n}\n```\n\n### Essential HTTP Security Headers:\n| Header | Purpose |\n|---|---|\n| `Content-Security-Policy` | Prevent XSS by allowlisting resource origins |\n| `X-Frame-Options: DENY` | Prevent clickjacking |\n| `Strict-Transport-Security` | Force HTTPS |\n| `X-Content-Type-Options: nosniff` | Prevent MIME sniffing |\n| `Permissions-Policy` | Restrict browser features |"
+    },
+    {
+      "type": "comparison",
+      "title": "Security Testing Types",
+      "columns": ["Type", "When", "What it finds", "Tools"],
+      "rows": [
+        { "Type": "SAST", "When": "At commit/build", "What it finds": "Code vulnerabilities (SQL injection, insecure code)", "Tools": "SonarQube, SpotBugs, Semgrep" },
+        { "Type": "SCA", "When": "At build", "What it finds": "Vulnerable dependencies (Log4Shell, etc)", "Tools": "OWASP Dependency-Check, Snyk, Trivy" },
+        { "Type": "Secret scanning", "When": "At commit", "What it finds": "Hardcoded credentials, API keys", "Tools": "GitGuardian, truffleHog, gitleaks" },
+        { "Type": "DAST", "When": "After deploy (staging)", "What it finds": "Runtime vulnerabilities, injection", "Tools": "OWASP ZAP, Burp Suite" },
+        { "Type": "Container scanning", "When": "After image build", "What it finds": "OS/package CVEs in container", "Tools": "Trivy, Grype, Docker Scout" }
+      ]
+    },
+    {
+      "type": "quiz",
+      "question": "What is Broken Object Level Authorization (BOLA) and why is it the #1 API vulnerability?",
+      "options": [
+        "When API authentication tokens are broken or expired",
+        "When an API fails to verify that the requesting user actually owns the object they're trying to access by ID",
+        "When API objects are not encrypted in transit",
+        "When API response objects contain too much sensitive data"
+      ],
+      "answer": 1,
+      "explanation": "BOLA (also known as IDOR — Insecure Direct Object Reference) happens when you return or modify a resource by ID without checking the requester owns it. An attacker simply changes the ID in the request (order/123 → order/456) to access another user's data. It's #1 because APIs naturally expose IDs and the check is easy to forget."
+    }
+  ]
+}

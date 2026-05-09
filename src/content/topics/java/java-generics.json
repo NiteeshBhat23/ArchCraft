@@ -1,0 +1,63 @@
+{
+  "id": "java-generics",
+  "title": "Generics & Type Erasure",
+  "track": "java",
+  "summary": "How Java generics work under the hood, type erasure, wildcards, PECS, and bridge methods.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## Why Generics Exist\n\nBefore Java 5, collections were raw typed — you'd cast everything manually and get `ClassCastException` at runtime. Generics move type-safety to **compile time**.\n\n```java\n// Before generics (pre-Java 5)\nList list = new ArrayList();\nlist.add(\"hello\");\nString s = (String) list.get(0); // runtime cast\n\n// With generics\nList<String> list = new ArrayList<>();\nlist.add(\"hello\");\nString s = list.get(0); // no cast needed, compile-time safe\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "Generics Compile-Time vs Runtime",
+      "content": "graph LR\n    A[\"Generic Code\\nList<String>\"] -->|javac| B[\"Type Checking\\n(compile time)\"]\n    B -->|type erasure| C[\"Bytecode\\nList (raw type)\"]\n    C -->|JVM runs| D[\"Runtime\\nno type info\"]\n    style B fill:#059669,color:#fff\n    style D fill:#dc2626,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Type Erasure\n\nJava generics are implemented via **type erasure** — generic type information exists only at compile time. At runtime, `List<String>` and `List<Integer>` are both just `List`.\n\n### What erasure does:\n- Replaces type parameters with their bounds (or `Object` if unbounded)\n- Inserts casts where needed\n- Generates bridge methods for polymorphism\n\n```java\n// Source code\npublic class Box<T> {\n    private T value;\n    public T get() { return value; }\n}\n\n// After erasure (what bytecode sees)\npublic class Box {\n    private Object value;\n    public Object get() { return value; }\n}\n```"
+    },
+    {
+      "type": "callout",
+      "variant": "warning",
+      "title": "Cannot do new T() or T[]",
+      "content": "Because of type erasure, you cannot instantiate a type parameter directly: `new T()` or `new T[]` won't compile. Work around with Class<T> tokens: pass `Class<T> clazz` and call `clazz.newInstance()`."
+    },
+    {
+      "type": "markdown",
+      "content": "## Wildcards and Bounds\n\n### Upper Bounded: `? extends T`\nUse when you want to **read** from a structure. You know items are at least T.\n\n```java\npublic double sumList(List<? extends Number> list) {\n    return list.stream().mapToDouble(Number::doubleValue).sum();\n}\n```\n\n### Lower Bounded: `? super T`\nUse when you want to **write** to a structure. You know items can accept T.\n\n```java\npublic void addNumbers(List<? super Integer> list) {\n    list.add(1);\n    list.add(2);\n}\n```\n\n### Unbounded: `?`\nUse when you don't care about the type at all — only need Object methods."
+    },
+    {
+      "type": "diagram",
+      "title": "PECS — Producer Extends, Consumer Super",
+      "content": "graph TD\n    PECS[PECS Rule]\n    PECS --> PE[\"Producer? Use extends\\n? extends T\\nYou READ from it\"]\n    PECS --> CS[\"Consumer? Use super\\n? super T\\nYou WRITE to it\"]\n    PE --> Ex1[\"copy(src: List<? extends T>)\\nSRC produces values\"]\n    CS --> Ex2[\"copy(dst: List<? super T>)\\nDST consumes values\"]\n    style PECS fill:#4f46e5,color:#fff\n    style PE fill:#059669,color:#fff\n    style CS fill:#d97706,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Bridge Methods\n\nWhen a class extends a generic type and overrides a method, the compiler generates a **bridge method** to maintain polymorphism after erasure.\n\n```java\nclass StringBox extends Box<String> {\n    @Override\n    public String get() { return \"hello\"; } // your method\n}\n\n// Compiler also generates (bridge method):\n// public Object get() { return get(); }  // calls String version\n```\n\nThis is why `getDeclaredMethods()` may return more methods than you wrote."
+    },
+    {
+      "type": "comparison",
+      "title": "Wildcard Cheat Sheet",
+      "columns": ["Wildcard", "Usage", "Can Read?", "Can Write?"],
+      "rows": [
+        { "Wildcard": "List<T>", "Usage": "Exact type known", "Can Read?": "✓ as T", "Can Write?": "✓ as T" },
+        { "Wildcard": "List<? extends T>", "Usage": "Producer / read-only", "Can Read?": "✓ as T", "Can Write?": "✗ (only null)" },
+        { "Wildcard": "List<? super T>", "Usage": "Consumer / write", "Can Read?": "✓ as Object", "Can Write?": "✓ as T" },
+        { "Wildcard": "List<?>", "Usage": "Unknown type", "Can Read?": "✓ as Object", "Can Write?": "✗ (only null)" }
+      ]
+    },
+    {
+      "type": "quiz",
+      "question": "What does PECS stand for and what does it guide?",
+      "options": [
+        "Producer Extends, Consumer Super — guides wildcard selection",
+        "Private Encapsulation Compile Safety — guides access modifiers",
+        "Polymorphic Erasure Compile Strategy — guides type erasure",
+        "Producer Enum, Consumer Sealed — guides modern Java features"
+      ],
+      "answer": 0,
+      "explanation": "PECS (Producer Extends, Consumer Super) is the guideline for choosing wildcards: use `? extends T` when a collection produces values you read from it, and `? super T` when it consumes values you write to it."
+    }
+  ]
+}

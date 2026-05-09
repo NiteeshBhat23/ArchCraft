@@ -1,0 +1,54 @@
+{
+  "id": "pe-devsecops",
+  "title": "Security in the Pipeline (DevSecOps)",
+  "track": "platform-engineering",
+  "summary": "Shift-left security, SAST/DAST/SCA, SBOM, container scanning, supply chain security, and secrets scanning in CI/CD.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## DevSecOps — Shifting Left\n\nDevSecOps integrates security into every phase of the SDLC — not as a gate at the end, but as a continuous activity. The later a vulnerability is found, the more expensive it is to fix.\n\n**Cost of fixing a vulnerability:**\n- Design phase: $1\n- Development: $10  \n- Test/staging: $100\n- Production: $10,000+"
+    },
+    {
+      "type": "diagram",
+      "title": "Security in Every Pipeline Stage",
+      "content": "graph LR\n    Code[Code] -->|SAST| Commit[Commit]\n    Commit -->|Secret scan| Build[Build]\n    Build -->|SCA dependency scan| Test[Test]\n    Test -->|Container scan| Image[Image]\n    Image -->|DAST| Staging[Staging]\n    Staging -->|Pen test| Prod[Production]\n    Prod -->|Runtime protection| Monitor[Monitor]\n    style Code fill:#4f46e5,color:#fff\n    style Prod fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Security Testing Types\n\n### SAST — Static Application Security Testing\nAnalyzes source code without running it. Finds injection vulnerabilities, insecure patterns, secrets in code.\n\n```yaml\n# GitHub Actions — SAST with Semgrep\n- name: SAST Scan\n  uses: semgrep/semgrep-action@v1\n  with:\n    config: >-\n      p/owasp-top-ten\n      p/java\n      p/spring\n```\n\n### SCA — Software Composition Analysis\nScans dependencies for known CVEs (Log4Shell, Spring4Shell, etc.)\n\n```yaml\n- name: Dependency vulnerability scan\n  run: mvn org.owasp:dependency-check-maven:check\n  # Fails build if CVSS >= 7.0 (high/critical)\n```\n\n### Secret Scanning\nPrevents credentials, API keys, and tokens from being committed:\n\n```yaml\n- name: Secret scan\n  uses: trufflesecurity/trufflehog@main\n  with:\n    path: ./\n    base: ${{ github.event.repository.default_branch }}\n    extra_args: --only-verified\n```\n\n### Container Image Scanning\n```yaml\n- name: Trivy container scan\n  uses: aquasecurity/trivy-action@master\n  with:\n    image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}\n    exit-code: '1'           # fail build on findings\n    severity: 'CRITICAL,HIGH'\n    ignore-unfixed: true     # skip unfixed vulns\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## SBOM — Software Bill of Materials\n\nAn SBOM is a machine-readable inventory of all software components and their dependencies — like a food ingredient list for software.\n\n```bash\n# Generate SBOM with Syft\nsyft registry/order-service:1.2.0 -o spdx-json > sbom.json\nsyft registry/order-service:1.2.0 -o cyclonedx-json >> sbom-cyclonedx.json\n\n# Scan SBOM for vulnerabilities with Grype\ngrype sbom:sbom.json\n\n# Formats: SPDX (Linux Foundation), CycloneDX (OWASP)\n```\n\nSBOM use cases:\n- Rapid response to new CVEs (instantly know which services are affected)\n- Regulatory compliance (US Executive Order 14028 mandates SBOMs for federal software)\n- License compliance (know if any dependency uses GPL, AGPL)"
+    },
+    {
+      "type": "markdown",
+      "content": "## Supply Chain Security\n\n### Image signing with Cosign\n```bash\n# Sign container image after build\ncosign sign --key cosign.key registry/order-service:sha-abc123\n\n# Verify before deployment (enforce in admission controller)\ncosign verify --key cosign.pub registry/order-service:sha-abc123\n\n# Kubernetes admission: only allow signed images (Sigstore/Policy Controller)\n```\n\n### Provenance Attestations (SLSA)\nSLSA (Supply chain Levels for Software Artifacts) is a framework for verifying software provenance:\n\n```bash\n# Attest build provenance — who built this, when, from what source\ncosign attest --predicate provenance.json \\\n  --type slsaprovenance \\\n  registry/order-service:sha-abc123\n\n# Consumer verifies: this image was built from this exact commit, by this CI\ncosign verify-attestation --type slsaprovenance \\\n  registry/order-service:sha-abc123\n```"
+    },
+    {
+      "type": "comparison",
+      "title": "Security Tool Coverage Matrix",
+      "columns": ["Tool Category", "What it finds", "When in pipeline", "Tools"],
+      "rows": [
+        { "Tool Category": "SAST", "What it finds": "Code vulnerabilities, patterns", "When in pipeline": "Pre-commit, CI", "Tools": "SonarQube, Semgrep, SpotBugs" },
+        { "Tool Category": "SCA", "What it finds": "Vulnerable dependencies", "When in pipeline": "CI build", "Tools": "OWASP DC, Snyk, Grype" },
+        { "Tool Category": "Secret scanning", "What it finds": "Hardcoded credentials", "When in pipeline": "Pre-commit, CI", "Tools": "truffleHog, gitleaks, GitGuardian" },
+        { "Tool Category": "Container scanning", "What it finds": "OS/package CVEs", "When in pipeline": "After image build", "Tools": "Trivy, Docker Scout, Grype" },
+        { "Tool Category": "DAST", "What it finds": "Runtime vulns, injection", "When in pipeline": "Staging", "Tools": "OWASP ZAP, Burp Suite" },
+        { "Tool Category": "Supply chain", "What it finds": "Unsigned/tampered images", "When in pipeline": "Deploy time", "Tools": "Cosign, SLSA, in-toto" }
+      ]
+    },
+    {
+      "type": "quiz",
+      "question": "What does a Software Bill of Materials (SBOM) enable that traditional security scanning alone cannot?",
+      "options": [
+        "Real-time monitoring of production vulnerabilities",
+        "Rapid impact assessment when a new CVE is disclosed — instantly identify all services containing the vulnerable component",
+        "Automatic patching of vulnerable dependencies",
+        "Preventing unauthorized code changes"
+      ],
+      "answer": 1,
+      "explanation": "When Log4Shell was disclosed, organizations without SBOMs spent days manually checking which services used Log4j. With SBOMs, you query: 'which of our images contain log4j-core <= 2.14?' and get an answer in seconds. SBOMs also help with license compliance and regulatory requirements for software transparency."
+    }
+  ]
+}

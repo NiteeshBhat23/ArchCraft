@@ -1,0 +1,57 @@
+{
+  "id": "arch-multi-tenancy",
+  "title": "Multi-Tenancy Patterns",
+  "track": "architecture-patterns",
+  "summary": "Silo vs pool vs bridge models, tenant isolation, data partitioning strategies, and implementing multi-tenancy in Spring Boot.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## What is Multi-Tenancy?\n\nMulti-tenancy is an architecture where a **single software instance serves multiple customers (tenants)**, with each tenant's data isolated from others. Used by SaaS applications.\n\n**Three isolation models:**\n- **Silo** — dedicated infrastructure per tenant\n- **Pool** — shared infrastructure, logical isolation\n- **Bridge** — hybrid (shared compute, isolated storage)"
+    },
+    {
+      "type": "diagram",
+      "title": "Multi-Tenancy Models",
+      "content": "graph TB\n    subgraph Silo Model\n        T1[Tenant A] --> App1[Dedicated App]\n        App1 --> DB1[(Dedicated DB)]\n        T2[Tenant B] --> App2[Dedicated App]\n        App2 --> DB2[(Dedicated DB)]\n    end\n    subgraph Pool Model\n        T3[Tenant A] --> SharedApp[Shared App]\n        T4[Tenant B] --> SharedApp\n        SharedApp --> SharedDB[(Shared DB\\ntenant_id column)]\n    end\n    subgraph Bridge Model\n        T5[Tenant A] --> SharedApp2[Shared App]\n        T6[Tenant B] --> SharedApp2\n        SharedApp2 --> DB3[(Tenant A DB)]\n        SharedApp2 --> DB4[(Tenant B DB)]\n    end\n    style SharedApp fill:#4f46e5,color:#fff\n    style DB3 fill:#059669,color:#fff\n    style DB4 fill:#059669,color:#fff"
+    },
+    {
+      "type": "comparison",
+      "title": "Multi-Tenancy Model Trade-offs",
+      "columns": ["Model", "Isolation", "Cost", "Complexity", "Best For"],
+      "rows": [
+        { "Model": "Silo (per-tenant infra)", "Isolation": "Complete", "Cost": "High (N × infra cost)", "Complexity": "Low per tenant", "Best For": "Enterprise, regulated industries" },
+        { "Model": "Pool (shared everything)", "Isolation": "Logical only", "Cost": "Low", "Complexity": "High (tenant context everywhere)", "Best For": "SMB SaaS, high tenant count" },
+        { "Model": "Bridge (shared app, isolated DB)", "Isolation": "Data isolation", "Cost": "Medium", "Complexity": "Medium", "Best For": "Balance of cost and isolation" }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "## Pool Model — Tenant Context in Spring Boot\n\n```java\n// Tenant context holder (ThreadLocal)\npublic class TenantContext {\n    private static final ThreadLocal<String> TENANT = new ThreadLocal<>();\n    \n    public static void set(String tenantId) { TENANT.set(tenantId); }\n    public static String get() { return TENANT.get(); }\n    public static void clear() { TENANT.remove(); }\n}\n\n// Extract tenant from JWT / subdomain in filter\n@Component\npublic class TenantFilter extends OncePerRequestFilter {\n    @Override\n    protected void doFilterInternal(HttpServletRequest request,\n                                    HttpServletResponse response,\n                                    FilterChain chain) throws Exception {\n        // Extract from subdomain: tenant-a.app.com\n        String host = request.getServerName();\n        String tenantId = host.split(\"\\\\.\")[0];\n        \n        // Or extract from JWT claim\n        // String tenantId = jwtUtil.extractClaim(token, \"tenant_id\");\n        \n        TenantContext.set(tenantId);\n        try {\n            chain.doFilter(request, response);\n        } finally {\n            TenantContext.clear(); // CRITICAL: prevent leaking\n        }\n    }\n}\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Row-Level Security (Pool Model)\n\n```java\n// All queries automatically filtered by tenant_id\n@Repository\npublic interface OrderRepository extends JpaRepository<Order, Long> {\n    // Spring Data adds WHERE tenant_id = ? automatically via @Filter\n    List<Order> findByStatus(OrderStatus status);\n}\n\n// Hibernate filter applied globally\n@Entity\n@FilterDef(name = \"tenantFilter\", \n           parameters = @ParamDef(name = \"tenantId\", type = String.class))\n@Filter(name = \"tenantFilter\", condition = \"tenant_id = :tenantId\")\npublic class Order {\n    @Column(name = \"tenant_id\")\n    private String tenantId;\n    // ...\n}\n\n// Enable filter for all queries in this session\n@Aspect\n@Component\npublic class TenantFilterAspect {\n    @Autowired EntityManager em;\n    \n    @Before(\"execution(* com.example.repository.*.*(..))\")  \n    public void enableFilter() {\n        Session session = em.unwrap(Session.class);\n        session.enableFilter(\"tenantFilter\")\n               .setParameter(\"tenantId\", TenantContext.get());\n    }\n}\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Bridge Model — Dynamic Datasource Routing\n\n```java\n// Each tenant gets its own DB schema/database\n@Component\npublic class TenantDataSourceRouter extends AbstractRoutingDataSource {\n    @Override\n    protected Object determineCurrentLookupKey() {\n        return TenantContext.get(); // routes to tenant's datasource\n    }\n}\n\n@Configuration\npublic class DataSourceConfig {\n    @Bean\n    public DataSource dataSource(TenantDataSourceRouter router) {\n        Map<Object, Object> dataSources = new HashMap<>();\n        dataSources.put(\"tenant-a\", buildDataSource(\"jdbc:postgresql://host/tenant_a\"));\n        dataSources.put(\"tenant-b\", buildDataSource(\"jdbc:postgresql://host/tenant_b\"));\n        router.setTargetDataSources(dataSources);\n        router.afterPropertiesSet();\n        return router;\n    }\n}\n```"
+    },
+    {
+      "type": "callout",
+      "variant": "danger",
+      "title": "Always clear tenant context after each request",
+      "content": "TenantContext uses ThreadLocal. In thread pool environments, threads are reused. If you don't clear the tenant context after a request, the next request on that thread inherits the previous tenant's context — causing data leakage between tenants. Always use try-finally to guarantee cleanup."
+    },
+    {
+      "type": "quiz",
+      "question": "In the Pool multi-tenancy model, what is the primary security concern?",
+      "options": [
+        "Higher infrastructure costs from shared resources",
+        "Tenant data leakage — a bug in tenant filtering could expose one tenant's data to another",
+        "Difficulty scaling for individual tenants",
+        "Shared SSL certificates across tenants"
+      ],
+      "answer": 1,
+      "explanation": "In the Pool model, all tenants share the same database tables, differentiated only by a tenant_id column. A single bug — forgetting to add a WHERE tenant_id clause, a ThreadLocal leak, a misconfigured Hibernate filter — could expose all tenants' data to any one tenant. This is the critical risk that must be tested exhaustively."
+    }
+  ]
+}

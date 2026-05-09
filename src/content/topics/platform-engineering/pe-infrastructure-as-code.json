@@ -1,0 +1,46 @@
+{
+  "id": "pe-infrastructure-as-code",
+  "title": "Infrastructure as Code",
+  "track": "platform-engineering",
+  "summary": "Terraform fundamentals, state management, modules, Helm charts for Kubernetes, and IaC best practices.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## What is Infrastructure as Code?\n\nIaC means managing and provisioning infrastructure through machine-readable configuration files instead of manual processes or interactive GUIs. Infrastructure becomes versioned, repeatable, and auditable.\n\n**Key tools:**\n- **Terraform** — cloud-agnostic, declarative, HCL language\n- **Pulumi** — IaC with real programming languages (Java, Python, TypeScript)\n- **AWS CDK** — AWS-specific, real programming languages\n- **Helm** — Kubernetes package manager, templates"
+    },
+    {
+      "type": "diagram",
+      "title": "Terraform Workflow",
+      "content": "graph LR\n    Code[Write .tf files] -->|terraform init| Init[Download providers\\n& modules]\n    Init -->|terraform plan| Plan[Show what will change]\n    Plan -->|review| Review{Looks good?}\n    Review -->|yes| Apply[terraform apply]\n    Review -->|no| Code\n    Apply --> State[Update state file\\nterraform.tfstate]\n    State --> Infra[Real Infrastructure\\nAWS/GCP/Azure]\n    style Apply fill:#059669,color:#fff\n    style Plan fill:#4f46e5,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Terraform Basics\n\n```hcl\n# main.tf — provision an EKS cluster\nterraform {\n  required_providers {\n    aws = { source = \"hashicorp/aws\", version = \"~> 5.0\" }\n  }\n  backend \"s3\" {\n    bucket = \"my-terraform-state\"\n    key    = \"prod/eks/terraform.tfstate\"\n    region = \"us-east-1\"\n    # Remote state — shared across team, locked during apply\n  }\n}\n\nresource \"aws_eks_cluster\" \"main\" {\n  name     = var.cluster_name\n  role_arn = aws_iam_role.eks_role.arn\n  version  = \"1.29\"\n\n  vpc_config {\n    subnet_ids = var.private_subnet_ids\n  }\n\n  tags = local.common_tags\n}\n\nvariable \"cluster_name\" {\n  type        = string\n  description = \"EKS cluster name\"\n}\n\nlocals {\n  common_tags = {\n    Environment = var.environment\n    ManagedBy   = \"Terraform\"\n    Team        = \"platform\"\n  }\n}\n\noutput \"cluster_endpoint\" {\n  value = aws_eks_cluster.main.endpoint\n}\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Terraform State Management\n\nTerraform tracks real infrastructure in a **state file** (`terraform.tfstate`). This file maps your config to real resources.\n\n**Critical rules:**\n1. **Never store state in Git** — contains sensitive data (passwords, IPs)\n2. **Use remote state** — S3 + DynamoDB for locking, Terraform Cloud\n3. **One state per environment** — separate state for dev/staging/prod\n4. **State locking** — prevent concurrent applies corrupting state\n\n```hcl\n# Remote state with locking\nterraform {\n  backend \"s3\" {\n    bucket         = \"my-tf-state\"\n    key            = \"${var.environment}/terraform.tfstate\"\n    region         = \"us-east-1\"\n    encrypt        = true\n    dynamodb_table = \"terraform-locks\"  # locking\n  }\n}\n\n# Reference state from another config\ndata \"terraform_remote_state\" \"networking\" {\n  backend = \"s3\"\n  config = {\n    bucket = \"my-tf-state\"\n    key    = \"networking/terraform.tfstate\"\n    region = \"us-east-1\"\n  }\n}\n\n# Use output from another config\nsubnet_ids = data.terraform_remote_state.networking.outputs.private_subnets\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Helm Charts for Kubernetes\n\nHelm is the Kubernetes package manager. A **Chart** is a templated collection of Kubernetes manifests.\n\n```\nmy-service/              ← Chart directory\n  Chart.yaml             ← Chart metadata\n  values.yaml            ← Default values\n  values-prod.yaml       ← Production overrides\n  templates/\n    deployment.yaml      ← Templated Deployment\n    service.yaml         ← Templated Service\n    ingress.yaml         ← Templated Ingress\n    _helpers.tpl         ← Template helpers\n```\n\n```yaml\n# values.yaml\nreplicaCount: 2\nimage:\n  repository: registry/order-service\n  tag: latest\nresources:\n  requests:\n    memory: 256Mi\n    cpu: 250m\n\n# templates/deployment.yaml\nspec:\n  replicas: {{ .Values.replicaCount }}\n  template:\n    spec:\n      containers:\n      - image: {{ .Values.image.repository }}:{{ .Values.image.tag }}\n```\n\n```bash\n# Deploy with Helm\nhelm upgrade --install order-service ./charts/order-service \\\n  --namespace production \\\n  --values values-prod.yaml \\\n  --set image.tag=$GIT_SHA\n\n# Rollback\nhelm rollback order-service 1  # roll back to revision 1\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "IaC Layered Architecture",
+      "content": "graph TB\n    L1[Layer 1: Cloud Foundation\\nTerraform: VPC, subnets, IAM, DNS]\n    L2[Layer 2: Platform\\nTerraform: EKS cluster, RDS, Redis]\n    L3[Layer 3: Applications\\nHelm: Deploy services to K8s]\n    L4[Layer 4: Config\\nConfigMaps, Secrets, feature flags]\n    L1 --> L2 --> L3 --> L4\n    style L1 fill:#4f46e5,color:#fff\n    style L2 fill:#7c3aed,color:#fff\n    style L3 fill:#2563eb,color:#fff\n    style L4 fill:#059669,color:#fff"
+    },
+    {
+      "type": "quiz",
+      "question": "Why should Terraform state never be stored in a Git repository?",
+      "options": [
+        "Git cannot handle binary files like the state file",
+        "The state file contains sensitive values (passwords, connection strings) and Git history makes them permanently visible even after deletion",
+        "Terraform requires state to be stored in S3 specifically",
+        "Git conflicts with state files cause infrastructure corruption"
+      ],
+      "answer": 1,
+      "explanation": "Terraform state often contains sensitive data like database passwords, private keys, and connection strings. Committing to Git exposes these permanently in history — even after deletion, `git log` reveals them. Additionally, concurrent applies without locking can corrupt state. Use remote state (S3 + DynamoDB) which supports encryption and locking."
+    }
+  ]
+}

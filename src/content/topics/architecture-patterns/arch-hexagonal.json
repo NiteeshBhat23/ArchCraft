@@ -1,0 +1,58 @@
+{
+  "id": "arch-hexagonal",
+  "title": "Hexagonal / Clean Architecture",
+  "track": "architecture-patterns",
+  "summary": "Ports & adapters pattern, dependency inversion at scale, keeping business logic free of framework concerns.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## The Core Idea\n\nHexagonal Architecture (Alistair Cockburn, 2005), also called Ports & Adapters, places the **domain model at the center** and isolates it from external concerns (databases, HTTP, messaging, UI) via ports (interfaces) and adapters (implementations).\n\nThe result: business logic has **zero dependency** on Spring, JPA, HTTP, or any infrastructure framework."
+    },
+    {
+      "type": "diagram",
+      "title": "Hexagonal Architecture",
+      "content": "graph LR\n    subgraph Adapters - Driving\n        REST[REST Controller]\n        CLI[CLI Adapter]\n        MQ[Message Consumer]\n    end\n    subgraph Application Core\n        AP[Application Port\\nUseCase interface]\n        Domain[Domain Model\\nPure Java]\n        DP[Domain Port\\nRepository interface]\n    end\n    subgraph Adapters - Driven\n        JPA[JPA Repository]\n        Kafka[Kafka Producer]\n        HTTP[HTTP Client]\n    end\n    REST -->|calls| AP\n    CLI -->|calls| AP\n    MQ -->|calls| AP\n    AP --> Domain\n    Domain -->|uses| DP\n    DP <|-- JPA\n    DP <|-- Kafka\n    DP <|-- HTTP\n    style Domain fill:#4f46e5,color:#fff\n    style AP fill:#059669,color:#fff\n    style DP fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Ports and Adapters\n\n### Driving (Primary) Ports — how the application is used\nInterfaces defined by the application that the outside world calls:\n\n```java\n// Port (interface — part of application core)\npublic interface PlaceOrderUseCase {\n    OrderId placeOrder(PlaceOrderCommand command);\n}\n\n// Adapter (implementation — lives in infrastructure)\n@RestController\npublic class OrderController {\n    private final PlaceOrderUseCase placeOrderUseCase; // depends on interface\n    \n    @PostMapping(\"/orders\")\n    public ResponseEntity<OrderResponse> placeOrder(@RequestBody OrderRequest req) {\n        OrderId id = placeOrderUseCase.placeOrder(new PlaceOrderCommand(req));\n        return ResponseEntity.ok(new OrderResponse(id));\n    }\n}\n```\n\n### Driven (Secondary) Ports — what the application depends on\nInterfaces defined by the application for its outgoing dependencies:\n\n```java\n// Port (interface — part of application core)\npublic interface OrderRepository {\n    void save(Order order);\n    Optional<Order> findById(OrderId id);\n}\n\n// Adapter (implementation — infrastructure)\n@Repository\npublic class JpaOrderRepository implements OrderRepository {\n    // Spring Data JPA implementation\n}\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "Dependency Direction",
+      "content": "graph LR\n    REST[REST Adapter] -->|depends on| Port[UseCase Port\\ninterface]\n    Port <|--implements| Service[OrderService\\nDomain]\n    Service -->|depends on| Repo[Repository Port\\ninterface]\n    Repo <|--implements| JPA[JPA Adapter]\n    Note[Dependency always points INWARD\\nCore never depends on infrastructure]\n    style Service fill:#4f46e5,color:#fff\n    style Port fill:#059669,color:#fff\n    style Repo fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Project Structure\n\n```\nsrc/\n  domain/\n    model/\n      Order.java          ← pure domain entity\n      OrderLine.java\n      Money.java          ← value object\n    port/\n      in/\n        PlaceOrderUseCase.java     ← driving port (interface)\n        GetOrderUseCase.java\n      out/\n        OrderRepository.java       ← driven port (interface)\n        PaymentGateway.java\n    service/\n      OrderService.java   ← implements PlaceOrderUseCase, uses ports\n  \n  application/\n    dto/\n      PlaceOrderCommand.java\n      OrderResponse.java\n  \n  infrastructure/\n    web/\n      OrderController.java       ← driving adapter\n    persistence/\n      JpaOrderRepository.java    ← driven adapter\n      OrderJpaEntity.java        ← ORM mapping (not domain entity!)\n    messaging/\n      KafkaOrderPublisher.java   ← driven adapter\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Benefits and Trade-offs\n\n### Benefits:\n- **Testability** — domain logic tested with no Spring context (fast unit tests)\n- **Replaceability** — swap JPA for MongoDB by writing a new adapter\n- **Framework independence** — business rules survive framework upgrades\n- **Clarity** — explicit what goes in/out of the application\n\n### Trade-offs:\n- **More classes** — interfaces + implementations + mappers per concept\n- **Mapping overhead** — convert between domain model and JPA entity\n- **Learning curve** — team must understand the pattern\n\n```java\n// Fast unit test — no Spring, no DB, no network\n@Test\nvoid shouldCalculateOrderTotal() {\n    var repo = mock(OrderRepository.class);\n    var service = new OrderService(repo); // inject mock\n    \n    var order = service.placeOrder(new PlaceOrderCommand(...));\n    \n    assertThat(order.getTotal()).isEqualTo(Money.of(150, USD));\n}\n// Runs in milliseconds\n```"
+    },
+    {
+      "type": "comparison",
+      "title": "Layered vs Hexagonal Architecture",
+      "columns": ["Aspect", "Traditional Layered", "Hexagonal"],
+      "rows": [
+        { "Aspect": "Dependency direction", "Traditional Layered": "Top to bottom (Controller→Service→Repo)", "Hexagonal": "Always inward toward domain" },
+        { "Aspect": "Domain depends on", "Traditional Layered": "JPA annotations, Spring annotations", "Hexagonal": "Nothing — pure Java" },
+        { "Aspect": "Testing domain", "Traditional Layered": "Needs Spring context", "Hexagonal": "Plain unit test, no context" },
+        { "Aspect": "DB change", "Traditional Layered": "Change service + repo layers", "Hexagonal": "Write new adapter only" },
+        { "Aspect": "Complexity", "Traditional Layered": "Lower", "Hexagonal": "Higher (more abstractions)" }
+      ]
+    },
+    {
+      "type": "quiz",
+      "question": "In Hexagonal Architecture, where should the `OrderRepository` interface be defined?",
+      "options": [
+        "In the infrastructure layer alongside the JPA implementation",
+        "In the domain/application core, as a driven port that the domain depends on",
+        "In the REST adapter layer",
+        "It should be auto-generated by Spring Data"
+      ],
+      "answer": 1,
+      "explanation": "The OrderRepository interface (driven port) is defined in the domain/application core. This is the Dependency Inversion Principle — high-level modules (domain) should not depend on low-level modules (JPA). The domain defines what it needs via the interface; the infrastructure layer provides the implementation. This way the domain never imports JPA."
+    }
+  ]
+}

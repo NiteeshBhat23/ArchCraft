@@ -1,0 +1,55 @@
+{
+  "id": "arch-data-mesh",
+  "title": "Data Mesh",
+  "track": "architecture-patterns",
+  "summary": "Data Mesh principles, domain ownership of data products, self-serve data infrastructure, and federated governance.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## The Data Warehouse Problem\n\nTraditional data architectures centralize data in a warehouse owned by a single data team. As the organization scales, this becomes a bottleneck:\n- Central team becomes a bottleneck for all data needs\n- Disconnected from domain knowledge (who understands order data? the orders team)\n- Long lead times for data pipelines\n- Quality issues accumulate\n\n**Data Mesh** (Zhamak Dehghani, 2019) applies microservices thinking to data."
+    },
+    {
+      "type": "diagram",
+      "title": "Centralized Data Lake vs Data Mesh",
+      "content": "graph TB\n    subgraph Centralized Data Lake\n        DomainA[Order Domain] -->|ETL| DL[Central Data Lake]\n        DomainB[User Domain] -->|ETL| DL\n        DomainC[Product Domain] -->|ETL| DL\n        DL --> Report[Reports & Analytics]\n        Note[Central team owns everything\\nBottleneck, context lost]\n    end\n    subgraph Data Mesh\n        OrderDP[Orders Domain\\nData Products]\n        UserDP[Users Domain\\nData Products]\n        ProductDP[Products Domain\\nData Products]\n        OrderDP -->|API| Consumer[Data Consumer]\n        UserDP -->|API| Consumer\n        ProductDP -->|API| Consumer\n    end\n    style DL fill:#dc2626,color:#fff\n    style Consumer fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Four Principles of Data Mesh\n\n### 1. Domain Ownership\nData is owned by the domain that produces it. The Orders team owns and publishes order data products. They understand it, maintain quality, and define its schema.\n\n### 2. Data as a Product\nEach domain treats its data as a first-class product with:\n- Discoverable (catalog entry)\n- Addressable (stable API/URI)\n- Understandable (documented schema, SLOs)\n- Trustworthy (data quality guarantees)\n- Secure (access controls)\n\n### 3. Self-Serve Data Infrastructure\nA platform team provides tools so domain teams can build and serve data products without needing platform expertise — data storage, pipeline tooling, catalog, observability.\n\n### 4. Federated Computational Governance\nCentral governance sets global standards (security, privacy, quality thresholds). Domains implement them. No central bottleneck for every decision."
+    },
+    {
+      "type": "diagram",
+      "title": "Data Product Structure",
+      "content": "graph LR\n    subgraph Orders Data Product\n        Raw[Raw Events\\nKafka] --> Transform[Transform\\nSpark/Flink]\n        Transform --> Serve[Serve\\nAPI / Parquet / SQL view]\n        Serve --> Contract[Data Contract\\nSchema + SLOs]\n        Contract --> Catalog[Data Catalog\\nBackstage / DataHub]\n    end\n    Consumer1[BI Team] -->|query| Serve\n    Consumer2[ML Team] -->|query| Serve\n    Consumer3[Finance] -->|query| Serve\n    style Contract fill:#4f46e5,color:#fff\n    style Catalog fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Data Contracts\n\nA data contract is a formal agreement between data producers and consumers defining schema, SLOs, and semantics:\n\n```yaml\n# orders-data-contract.yaml\nname: orders-completed\nversion: 2.1.0\nowner: team-orders\n\nschema:\n  type: record\n  fields:\n    - name: order_id\n      type: string\n      description: Unique order identifier\n    - name: customer_id\n      type: string\n    - name: total_amount\n      type: decimal\n    - name: currency\n      type: string\n      enum: [USD, EUR, GBP]\n    - name: completed_at\n      type: timestamp\n\nslos:\n  freshness: < 5 minutes\n  completeness: > 99.9%\n  availability: > 99.5%\n\naccess:\n  classification: internal\n  pii_fields: [customer_id]\n  requires_approval: false\n```"
+    },
+    {
+      "type": "comparison",
+      "title": "Data Lake vs Data Mesh",
+      "columns": ["Aspect", "Central Data Lake", "Data Mesh"],
+      "rows": [
+        { "Aspect": "Ownership", "Central Data Lake": "Central data team", "Data Mesh": "Domain teams" },
+        { "Aspect": "Context", "Central Data Lake": "Lost in translation", "Data Mesh": "Preserved (domain experts)" },
+        { "Aspect": "Scalability", "Central Data Lake": "Bottleneck at center", "Data Mesh": "Scales with domain teams" },
+        { "Aspect": "Quality ownership", "Central Data Lake": "Central team (far from source)", "Data Mesh": "Producing domain (close to source)" },
+        { "Aspect": "Governance", "Central Data Lake": "Centralized", "Data Mesh": "Federated with global standards" },
+        { "Aspect": "Complexity", "Central Data Lake": "Simpler architecture", "Data Mesh": "Higher org + tech complexity" }
+      ]
+    },
+    {
+      "type": "quiz",
+      "question": "What does 'Data as a Product' mean in Data Mesh?",
+      "options": [
+        "Data should be sold to external customers as a revenue stream",
+        "Domain teams treat their data outputs as first-class products with discoverability, SLOs, documentation, and ownership accountability",
+        "All data must go through a product management review process",
+        "Data products are stored in a product database rather than a data warehouse"
+      ],
+      "answer": 1,
+      "explanation": "In Data Mesh, 'Data as a Product' means applying product thinking to data. Domain teams publish data products with proper documentation, stable schemas (versioned contracts), quality SLOs, discoverability in a catalog, and accountable ownership — just like a software team would for an API product."
+    }
+  ]
+}

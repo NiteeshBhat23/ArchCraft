@@ -1,0 +1,50 @@
+{
+  "id": "arch-ddd",
+  "title": "Domain-Driven Design (DDD)",
+  "track": "architecture-patterns",
+  "summary": "Aggregates, entities, value objects, domain events, bounded contexts, and applying DDD in Spring Boot microservices.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## What is DDD?\n\nDomain-Driven Design (Eric Evans, 2003) is an approach to software development that puts the **business domain at the center** of design. The software model mirrors the domain expert's mental model, using the same language (Ubiquitous Language).\n\n### Strategic vs Tactical DDD\n- **Strategic** — large-scale structure: Bounded Contexts, Context Maps, Ubiquitous Language\n- **Tactical** — fine-grained patterns: Aggregates, Entities, Value Objects, Domain Events, Repositories"
+    },
+    {
+      "type": "diagram",
+      "title": "DDD Building Blocks",
+      "content": "graph TD\n    BC[Bounded Context] --> Agg[Aggregate]\n    Agg --> E[Entity\\nHas identity\\nmutable]\n    Agg --> VO[Value Object\\nNo identity\\nimmutable]\n    Agg --> DE[Domain Events]\n    BC --> Repo[Repository\\nPersistence abstraction]\n    BC --> DS[Domain Service\\nStateless domain logic]\n    BC --> AS[Application Service\\nOrchestration layer]\n    style BC fill:#4f46e5,color:#fff\n    style Agg fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Entities and Value Objects\n\n### Entity — has identity, is mutable\nAn entity's identity persists even as its attributes change. Two entities with the same attributes are NOT equal if their IDs differ.\n\n```java\n@Entity\npublic class Order {\n    private OrderId id;        // identity\n    private CustomerId customerId;\n    private List<OrderLine> lines;\n    private Money total;\n    private OrderStatus status;\n    \n    // Two orders with same lines but different IDs are different orders\n    @Override\n    public boolean equals(Object o) {\n        return this.id.equals(((Order) o).id); // identity-based equality\n    }\n}\n```\n\n### Value Object — no identity, immutable\nDefined by its attributes. Two value objects with same attributes ARE equal.\n\n```java\npublic record Money(BigDecimal amount, Currency currency) {\n    public Money add(Money other) {\n        if (!this.currency.equals(other.currency))\n            throw new DomainException(\"Currency mismatch\");\n        return new Money(this.amount.add(other.amount), this.currency);\n    }\n    // Records are immutable — good Value Object\n}\n\n// Two Money objects with same amount and currency are equal\nnew Money(100, USD).equals(new Money(100, USD)); // true\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Aggregates\n\nAn aggregate is a **cluster of related objects treated as a unit** for data changes. It has an **Aggregate Root** — the only entry point for modifications.\n\n### Rules:\n1. External code can only reference the **Aggregate Root**, not internal entities\n2. All invariants (business rules) within an aggregate must always be consistent\n3. Only one aggregate root is modified per transaction\n4. References to other aggregates by ID only (not object reference)\n\n```java\npublic class Order { // Aggregate Root\n    private OrderId id;\n    private List<OrderLine> lines = new ArrayList<>(); // internal entity\n    private OrderStatus status;\n    \n    public void addLine(ProductId productId, Quantity qty, Money price) {\n        // Business invariant: cannot add to confirmed order\n        if (status != DRAFT) throw new DomainException(\"Order already confirmed\");\n        lines.add(new OrderLine(productId, qty, price));\n    }\n    \n    public void confirm() {\n        if (lines.isEmpty()) throw new DomainException(\"Cannot confirm empty order\");\n        this.status = CONFIRMED;\n        // domain event raised\n        registerEvent(new OrderConfirmedEvent(this.id));\n    }\n    // OrderLine cannot be accessed/modified except through Order\n}\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "Aggregate Boundaries",
+      "content": "graph TB\n    subgraph Order Aggregate\n        OR[Order Root\\nOrderId: 123] --> OL1[OrderLine\\nProduct A]\n        OR --> OL2[OrderLine\\nProduct B]\n        OR --> Addr[ShippingAddress\\nValue Object]\n    end\n    subgraph Customer Aggregate\n        CR[Customer Root\\nCustomerId: 456]\n    end\n    OR -->|reference by ID only| CR\n    Note[External code accesses\\nOrderLine through Order only]\n    style OR fill:#4f46e5,color:#fff\n    style CR fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Domain Events\n\nDomain events represent **something significant that happened** in the domain — they're facts, named in past tense.\n\n```java\n// Domain event\npublic record OrderConfirmedEvent(\n    OrderId orderId,\n    CustomerId customerId,\n    Money total,\n    Instant occurredAt\n) implements DomainEvent {}\n\n// Published from aggregate after business operation\npublic class Order {\n    private List<DomainEvent> events = new ArrayList<>();\n    \n    public void confirm() {\n        // business logic...\n        events.add(new OrderConfirmedEvent(id, customerId, calculateTotal(), Instant.now()));\n    }\n    \n    public List<DomainEvent> releaseEvents() {\n        var released = new ArrayList<>(events);\n        events.clear();\n        return released;\n    }\n}\n\n// Application service publishes after saving aggregate\n@Transactional\npublic void confirmOrder(OrderId orderId) {\n    Order order = orderRepository.findById(orderId);\n    order.confirm();\n    orderRepository.save(order);\n    eventPublisher.publishAll(order.releaseEvents()); // publish after commit\n}\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Bounded Contexts\n\nA Bounded Context defines the boundary within which a particular **Ubiquitous Language** is consistent. The same word can mean different things in different contexts.\n\n```\n\"Order\" in Order Context: line items, status, payment\n\"Order\" in Shipping Context: destination, weight, dimensions\n\"Order\" in Analytics Context: revenue, category, timestamp\n\nDon't try to build one Order model that serves all contexts!\nEach context has its own model.\n```\n\n### Context Map patterns:\n- **Shared Kernel** — two contexts share a small subset of models\n- **Customer/Supplier** — upstream provides API for downstream\n- **Anti-Corruption Layer (ACL)** — translate between different models at boundary\n- **Published Language** — well-documented shared protocol (like Protobuf schema)"
+    },
+    {
+      "type": "quiz",
+      "question": "Why should only the Aggregate Root be accessible from outside an aggregate?",
+      "options": [
+        "For performance reasons — accessing child entities is slower",
+        "To enforce all business invariants through a single entry point, preventing the aggregate from entering an invalid state",
+        "Because child entities don't have IDs and can't be referenced",
+        "To simplify the database schema"
+      ],
+      "answer": 1,
+      "explanation": "The Aggregate Root is the guardian of the aggregate's invariants (business rules). All modifications must go through it so it can enforce rules like 'order lines can only be added to draft orders.' If external code could directly modify OrderLine, it could bypass these rules and put the aggregate in an invalid state."
+    }
+  ]
+}

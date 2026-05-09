@@ -1,0 +1,46 @@
+{
+  "id": "spring-observability",
+  "title": "Actuator, Micrometer & Observability",
+  "track": "spring-boot",
+  "summary": "Spring Boot Actuator endpoints, Micrometer metrics, distributed tracing with OpenTelemetry, and health indicators.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## Spring Boot Actuator\n\nActuator exposes operational endpoints for monitoring and managing your application:\n\n```yaml\n# application.yml\nmanagement:\n  endpoints:\n    web:\n      exposure:\n        include: health,info,metrics,prometheus,env,loggers\n  endpoint:\n    health:\n      show-details: always\n```\n\n### Key endpoints:\n| Endpoint | Purpose |\n|---|---|\n| `/actuator/health` | Health status (UP/DOWN) with component details |\n| `/actuator/metrics` | Application metrics |\n| `/actuator/prometheus` | Prometheus-format metrics scrape |\n| `/actuator/info` | Application version, git commit info |\n| `/actuator/loggers` | View/change log levels at runtime |\n| `/actuator/env` | Current environment properties |\n| `/actuator/conditions` | Auto-configuration report |"
+    },
+    {
+      "type": "markdown",
+      "content": "## Micrometer\n\nMicrometer is the metrics facade for JVM applications — like SLF4J but for metrics. Write metrics once, export to any backend.\n\n```java\n@Service\npublic class OrderService {\n    private final Counter orderCounter;\n    private final Timer orderTimer;\n    \n    public OrderService(MeterRegistry registry) {\n        this.orderCounter = Counter.builder(\"orders.created\")\n            .tag(\"region\", \"eu-west\")\n            .description(\"Total orders created\")\n            .register(registry);\n        \n        this.orderTimer = Timer.builder(\"orders.processing.time\")\n            .publishPercentiles(0.5, 0.95, 0.99)\n            .register(registry);\n    }\n    \n    public Order createOrder(OrderRequest req) {\n        return orderTimer.record(() -> {\n            Order order = processOrder(req);\n            orderCounter.increment();\n            return order;\n        });\n    }\n}\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "Observability Stack",
+      "content": "graph LR\n    App[Spring Boot App] -->|metrics| Prom[Prometheus]\n    App -->|traces| OTEL[OpenTelemetry Collector]\n    App -->|logs| Loki[Loki / ELK]\n    Prom -->|visualize| Grafana[Grafana]\n    OTEL -->|traces| Jaeger[Jaeger / Tempo]\n    Loki -->|visualize| Grafana\n    Jaeger -->|visualize| Grafana\n    style App fill:#4f46e5,color:#fff\n    style Grafana fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Distributed Tracing with OpenTelemetry\n\nSpring Boot 3.x has first-class OpenTelemetry support via Micrometer Tracing:\n\n```xml\n<dependency>\n    <groupId>io.micrometer</groupId>\n    <artifactId>micrometer-tracing-bridge-otel</artifactId>\n</dependency>\n<dependency>\n    <groupId>io.opentelemetry.instrumentation</groupId>\n    <artifactId>opentelemetry-spring-boot-starter</artifactId>\n</dependency>\n```\n\n```yaml\nmanagement:\n  tracing:\n    sampling:\n      probability: 1.0  # sample 100% in dev, ~1% in prod\n  otlp:\n    tracing:\n      endpoint: http://otel-collector:4318/v1/traces\n```\n\nAll HTTP requests are automatically traced with trace IDs propagated via headers (`traceparent`)."
+    },
+    {
+      "type": "markdown",
+      "content": "## Custom Health Indicators\n\n```java\n@Component\npublic class ExternalApiHealthIndicator implements HealthIndicator {\n    \n    @Override\n    public Health health() {\n        try {\n            boolean ok = externalApi.ping();\n            return ok \n                ? Health.up().withDetail(\"api\", \"responsive\").build()\n                : Health.down().withDetail(\"api\", \"no response\").build();\n        } catch (Exception e) {\n            return Health.down(e)\n                .withDetail(\"error\", e.getMessage()).build();\n        }\n    }\n}\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "Three Pillars of Observability",
+      "content": "graph TD\n    O[Observability]\n    O --> M[Metrics\\nWhat is happening?\\nCounters, Gauges, Timers\\nMicrometer → Prometheus]\n    O --> L[Logs\\nWhat happened?\\nStructured events\\nLogback → Loki/ELK]\n    O --> T[Traces\\nWhere did it happen?\\nRequest journey\\nOTel → Jaeger/Tempo]\n    M --> Grafana[Grafana Dashboard]\n    L --> Grafana\n    T --> Grafana\n    style O fill:#4f46e5,color:#fff\n    style Grafana fill:#059669,color:#fff"
+    },
+    {
+      "type": "quiz",
+      "question": "What is Micrometer's role in Spring Boot observability?",
+      "options": [
+        "It is a logging framework that replaces SLF4J",
+        "It is a metrics facade that abstracts over different monitoring backends like Prometheus, Datadog, CloudWatch",
+        "It is a tracing agent that instruments bytecode automatically",
+        "It is Spring's replacement for Java Flight Recorder"
+      ],
+      "answer": 1,
+      "explanation": "Micrometer is a vendor-neutral metrics facade — like SLF4J but for metrics. You write metrics code once using Micrometer's API, and configure which backend to export to (Prometheus, Datadog, InfluxDB, CloudWatch, etc.) via dependencies and config, without changing application code."
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "id": "spring-security",
+  "title": "Spring Security",
+  "track": "spring-boot",
+  "summary": "Security filter chain, JWT authentication, OAuth2/OIDC integration, method security, and CSRF/CORS configuration.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## The Security Filter Chain\n\nSpring Security works by inserting a chain of `Filter` objects into the Servlet filter chain. Every request passes through all filters before reaching your controller.\n\nKey built-in filters (in order):\n1. `SecurityContextPersistenceFilter` — loads/saves SecurityContext\n2. `UsernamePasswordAuthenticationFilter` — handles form login\n3. `BearerTokenAuthenticationFilter` — handles JWT Bearer tokens\n4. `ExceptionTranslationFilter` — translates security exceptions to HTTP responses\n5. `AuthorizationFilter` — enforces access rules"
+    },
+    {
+      "type": "diagram",
+      "title": "Spring Security Filter Chain",
+      "content": "graph LR\n    Req[HTTP Request] --> F1[SecurityContextPersistence]\n    F1 --> F2[BearerTokenAuth\\nor JWTFilter]\n    F2 --> F3[ExceptionTranslation]\n    F3 --> F4[AuthorizationFilter]\n    F4 -->|authorized| C[Controller]\n    F4 -->|denied| R1[403 Forbidden]\n    F2 -->|invalid token| R2[401 Unauthorized]\n    style C fill:#059669,color:#fff\n    style R1 fill:#dc2626,color:#fff\n    style R2 fill:#dc2626,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## JWT Authentication Flow\n\n```java\n@Configuration\n@EnableWebSecurity\npublic class SecurityConfig {\n\n    @Bean\n    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {\n        return http\n            .csrf(csrf -> csrf.disable())             // stateless API\n            .sessionManagement(s -> s\n                .sessionCreationPolicy(STATELESS))    // no sessions\n            .authorizeHttpRequests(auth -> auth\n                .requestMatchers(\"/api/auth/**\").permitAll()\n                .requestMatchers(\"/api/admin/**\").hasRole(\"ADMIN\")\n                .anyRequest().authenticated())\n            .addFilterBefore(\n                new JwtAuthFilter(jwtUtil),\n                UsernamePasswordAuthenticationFilter.class)\n            .build();\n    }\n}\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "JWT Authentication Flow",
+      "content": "sequenceDiagram\n    participant C as Client\n    participant A as /auth/login\n    participant J as JwtAuthFilter\n    participant Ctrl as Controller\n    C->>A: POST {username, password}\n    A->>A: Authenticate via AuthenticationManager\n    A-->>C: {token: eyJhbG...}\n    C->>J: GET /api/data Bearer eyJhbG...\n    J->>J: Validate JWT signature\n    J->>J: Extract claims, set SecurityContext\n    J->>Ctrl: forward request\n    Ctrl-->>C: 200 OK {data}"
+    },
+    {
+      "type": "markdown",
+      "content": "## OAuth2 / OIDC\n\nSpring Security has first-class OAuth2 support. For OAuth2 resource server (API that validates tokens):\n\n```java\n@Bean\npublic SecurityFilterChain filterChain(HttpSecurity http) throws Exception {\n    return http\n        .oauth2ResourceServer(oauth2 -> oauth2\n            .jwt(jwt -> jwt\n                .jwtAuthenticationConverter(jwtAuthConverter())))\n        .authorizeHttpRequests(auth -> auth\n            .anyRequest().authenticated())\n        .build();\n}\n```\n\n```yaml\n# application.yml\nspring:\n  security:\n    oauth2:\n      resourceserver:\n        jwt:\n          issuer-uri: https://your-auth-server/.well-known/openid-configuration\n```\n\nFor OAuth2 login (redirects to Google/GitHub/Keycloak):\n```java\nhttp.oauth2Login(Customizer.withDefaults());\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Method Security\n\nAnnotate service methods directly:\n```java\n@Service\npublic class OrderService {\n\n    @PreAuthorize(\"hasRole('ADMIN') or #userId == authentication.name\")\n    public List<Order> getOrders(String userId) { ... }\n\n    @PostAuthorize(\"returnObject.owner == authentication.name\")\n    public Order getOrder(Long id) { ... }\n\n    @PreAuthorize(\"hasAuthority('ORDER_WRITE')\")\n    public Order createOrder(OrderRequest req) { ... }\n}\n```\n\nEnable with:\n```java\n@Configuration\n@EnableMethodSecurity  // Spring Security 6+\npublic class MethodSecurityConfig {}\n```"
+    },
+    {
+      "type": "comparison",
+      "title": "Authentication Mechanisms Comparison",
+      "columns": ["Mechanism", "Stateful?", "Best For", "Revocable?"],
+      "rows": [
+        { "Mechanism": "Session Cookie", "Stateful?": "Yes", "Best For": "Traditional web apps", "Revocable?": "Yes (invalidate session)" },
+        { "Mechanism": "JWT Bearer", "Stateful?": "No", "Best For": "REST APIs, microservices", "Revocable?": "Not easily (until expiry)" },
+        { "Mechanism": "OAuth2 + OIDC", "Stateful?": "No (access token)", "Best For": "SSO, third-party auth", "Revocable?": "Yes (token introspection)" },
+        { "Mechanism": "API Key", "Stateful?": "Yes (DB lookup)", "Best For": "Service-to-service", "Revocable?": "Yes" }
+      ]
+    },
+    {
+      "type": "quiz",
+      "question": "Why should CSRF protection typically be disabled for stateless REST APIs using JWT?",
+      "options": [
+        "JWT tokens are immune to CSRF attacks by design",
+        "CSRF attacks exploit session cookies; stateless APIs with JWT in Authorization headers are not vulnerable to CSRF",
+        "Disabling CSRF improves API performance significantly",
+        "CSRF protection doesn't work with JSON content type"
+      ],
+      "answer": 1,
+      "explanation": "CSRF (Cross-Site Request Forgery) attacks work by tricking a browser into sending a request with session cookies that the server trusts. If you're using JWT tokens in the Authorization header (not cookies), the browser won't automatically include them in cross-site requests, making CSRF protection unnecessary."
+    }
+  ]
+}

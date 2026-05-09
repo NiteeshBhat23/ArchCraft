@@ -1,0 +1,52 @@
+{
+  "id": "arch-event-driven",
+  "title": "Event-Driven Architecture",
+  "track": "architecture-patterns",
+  "summary": "Event choreography vs orchestration, event mesh, event schema design, and building resilient async systems.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## What is Event-Driven Architecture?\n\nIn event-driven architecture (EDA), services communicate by **producing and consuming events** rather than making direct API calls. Services react to things that have happened rather than being commanded to do things.\n\n**Key shift in thinking:**\n- Synchronous: \"Payment Service, please charge this card\"\n- Event-driven: \"An order was placed\" → Payment Service reacts to it"
+    },
+    {
+      "type": "diagram",
+      "title": "Event-Driven vs Request-Driven",
+      "content": "graph LR\n    subgraph Request-Driven\n        OS1[Order Service] -->|POST /charge| PS1[Payment Service]\n        PS1 -->|response| OS1\n        OS1 -->|POST /reserve| IS1[Inventory Service]\n    end\n    subgraph Event-Driven\n        OS2[Order Service] -->|OrderPlaced event| Bus[Event Bus/Kafka]\n        Bus -->|consume| PS2[Payment Service]\n        Bus -->|consume| IS2[Inventory Service]\n        Bus -->|consume| ES2[Email Service]\n    end\n    style Bus fill:#4f46e5,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Event Types\n\n### Domain Events (Facts)\nSomething that happened — past tense, immutable facts:\n```json\n{\n  \"type\": \"OrderPlaced\",\n  \"orderId\": \"ord-123\",\n  \"customerId\": \"cust-456\",\n  \"items\": [...],\n  \"total\": 150.00,\n  \"occurredAt\": \"2024-01-15T10:30:00Z\"\n}\n```\n\n### Commands (Requests to act)\nRequest for something to happen — but commands go over a queue, not directly:\n```json\n{\n  \"type\": \"ShipOrder\",\n  \"orderId\": \"ord-123\",\n  \"shippingAddress\": {...}\n}\n```\n\n### Notifications (Simple signals)\nSimple \"something happened\" without much data — recipient fetches details if needed."
+    },
+    {
+      "type": "markdown",
+      "content": "## Choreography vs Orchestration\n\n### Choreography\nEach service knows what to do when it receives an event. No central coordinator.\n\n```\nOrderService publishes → OrderPlaced\nInventoryService consumes → reserves stock → publishes StockReserved\nPaymentService consumes → charges card → publishes PaymentCompleted\nShippingService consumes → ships order\n```\n\n✓ Loosely coupled, no single point of failure\n✗ Hard to see the overall flow, debugging is complex\n\n### Orchestration\nA central orchestrator (workflow engine) explicitly tells services what to do.\n\n```\nOrderWorkflow orchestrates:\n  1. Tell InventoryService: reserve stock\n  2. Wait for result\n  3. Tell PaymentService: charge card\n  4. Wait for result\n  5. Tell ShippingService: ship order\n```\n\n✓ Visible flow, easier to manage state and compensations\n✗ Orchestrator becomes a coupling point"
+    },
+    {
+      "type": "diagram",
+      "title": "Event Schema Evolution Strategy",
+      "content": "graph TD\n    V1[\"Event v1\\n{ orderId, amount }\"] -->|backward compatible| V2[\"Event v2\\n{ orderId, amount, currency }\\ncurrency optional\"]\n    V2 -->|backward compatible| V3[\"Event v3\\n{ orderId, amount, currency, region }\\nregion optional\"]\n    Consumer1[Old Consumer\\nv1 schema] -->|still works| V2\n    Consumer1 -->|still works| V3\n    Note[Always add optional fields\\nNever remove fields\\nUse schema registry]\n    style Note fill:#d97706,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Event Schema Design Best Practices\n\n1. **Use past tense names** — `OrderPlaced`, not `PlaceOrder`\n2. **Include metadata** — event ID, timestamp, version, source service\n3. **Be self-contained** — include enough data so consumers don't need to call back\n4. **Version your events** — `v1`, `v2` or use schema registry (Confluent Schema Registry)\n5. **Backward compatibility** — add optional fields, never remove\n\n```json\n{\n  \"eventId\": \"evt-uuid-here\",\n  \"eventType\": \"OrderPlaced\",\n  \"eventVersion\": \"1.0\",\n  \"occurredAt\": \"2024-01-15T10:30:00Z\",\n  \"source\": \"order-service\",\n  \"correlationId\": \"req-abc123\",\n  \"payload\": {\n    \"orderId\": \"ord-123\",\n    \"customerId\": \"cust-456\",\n    \"total\": { \"amount\": 150.00, \"currency\": \"USD\" }\n  }\n}\n```"
+    },
+    {
+      "type": "callout",
+      "variant": "tip",
+      "title": "Use the Outbox Pattern for reliability",
+      "content": "To guarantee event delivery, write events to an 'outbox' table in the same DB transaction as your business data. A separate relay process reads the outbox and publishes to Kafka. This ensures events are only published if the business transaction committed — avoiding lost events or phantom events."
+    },
+    {
+      "type": "quiz",
+      "question": "What is the main trade-off of event choreography over orchestration?",
+      "options": [
+        "Choreography is always slower due to asynchronous processing",
+        "Choreography is loosely coupled but harder to visualize the overall flow and debug across services",
+        "Choreography requires a central broker while orchestration doesn't",
+        "Choreography cannot handle failures while orchestration can"
+      ],
+      "answer": 1,
+      "explanation": "Choreography produces loosely coupled services (no orchestrator dependency) but the overall business flow is implicit — spread across multiple services reacting to events. Debugging requires correlating events across services. Orchestration makes the flow explicit and easier to monitor/debug but introduces a central orchestrator as a coupling point."
+    }
+  ]
+}

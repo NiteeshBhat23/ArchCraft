@@ -1,0 +1,52 @@
+{
+  "id": "spring-autoconfiguration",
+  "title": "Auto-configuration Internals",
+  "track": "spring-boot",
+  "summary": "How @SpringBootApplication triggers auto-configuration, condition annotations, spring.factories, and the AutoConfiguration import selector.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## What is Auto-configuration?\n\nSpring Boot auto-configuration automatically configures Spring beans based on what's on the classpath, what beans are already defined, and what properties are set. It eliminates most boilerplate XML/Java config.\n\n`@SpringBootApplication` is a composed annotation:\n```java\n@SpringBootApplication\n// equivalent to:\n@SpringBootConfiguration    // specialized @Configuration\n@EnableAutoConfiguration    // triggers auto-config\n@ComponentScan              // scans current package\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "Auto-configuration Bootstrap Process",
+      "content": "sequenceDiagram\n    participant App as SpringApplication.run()\n    participant AC as AutoConfigurationImportSelector\n    participant SF as spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports\n    participant Cond as @Conditional evaluators\n    participant Ctx as ApplicationContext\n    App->>AC: load auto-configs\n    AC->>SF: read all registered auto-config classes\n    SF-->>AC: 150+ AutoConfiguration classes\n    AC->>Cond: evaluate @Conditional on each\n    Cond-->>AC: include / exclude\n    AC->>Ctx: register matching beans\n    Ctx-->>App: fully configured context"
+    },
+    {
+      "type": "markdown",
+      "content": "## @Conditional Annotations\n\nEvery auto-configuration class uses `@Conditional` to only activate when appropriate:\n\n| Annotation | Activates when... |\n|---|---|\n| `@ConditionalOnClass` | Class exists on classpath |\n| `@ConditionalOnMissingClass` | Class is NOT on classpath |\n| `@ConditionalOnBean` | Bean of type exists |\n| `@ConditionalOnMissingBean` | Bean of type does NOT exist |\n| `@ConditionalOnProperty` | Property has specific value |\n| `@ConditionalOnWebApplication` | Running as a web app |\n| `@ConditionalOnResource` | Resource file exists |\n\n```java\n@AutoConfiguration\n@ConditionalOnClass(DataSource.class)          // only if JDBC on classpath\n@ConditionalOnMissingBean(DataSource.class)    // only if you haven't defined one\n@EnableConfigurationProperties(DataSourceProperties.class)\npublic class DataSourceAutoConfiguration {\n    @Bean\n    public DataSource dataSource(DataSourceProperties props) {\n        return props.initializeDataSourceBuilder().build();\n    }\n}\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "Condition Evaluation Chain",
+      "content": "graph TD\n    A[DataSourceAutoConfiguration] --> B{@ConditionalOnClass\\nDataSource.class}\n    B -->|not found| X1[SKIP]\n    B -->|found| C{@ConditionalOnMissingBean\\nDataSource}\n    C -->|bean exists| X2[SKIP - user defined their own]\n    C -->|no bean| D{@ConditionalOnProperty\\nspring.datasource.url}\n    D -->|not set| X3[SKIP]\n    D -->|set| E[Create DataSource Bean ✓]\n    style E fill:#059669,color:#fff\n    style X1 fill:#dc2626,color:#fff\n    style X2 fill:#dc2626,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Auto-configuration Registration\n\nIn Spring Boot 2.x, auto-configs were registered in `META-INF/spring.factories`:\n```\norg.springframework.boot.autoconfigure.EnableAutoConfiguration=\\\n  com.example.MyAutoConfiguration\n```\n\nIn Spring Boot 3.x (Spring Framework 6), use:\n```\nMETA-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports\n```\n```\ncom.example.MyAutoConfiguration\ncom.example.AnotherAutoConfiguration\n```\n\n## Writing Your Own Auto-configuration\n\n```java\n@AutoConfiguration\n@ConditionalOnClass(MyLibrary.class)\n@ConditionalOnMissingBean(MyService.class)\n@EnableConfigurationProperties(MyLibraryProperties.class)\npublic class MyLibraryAutoConfiguration {\n    \n    @Bean\n    public MyService myService(MyLibraryProperties props) {\n        return new MyService(props.getApiUrl(), props.getTimeout());\n    }\n}\n\n@ConfigurationProperties(prefix = \"my.library\")\npublic class MyLibraryProperties {\n    private String apiUrl;\n    private Duration timeout = Duration.ofSeconds(30);\n    // getters/setters\n}\n```"
+    },
+    {
+      "type": "callout",
+      "variant": "info",
+      "title": "Auto-configuration ordering matters",
+      "content": "Use @AutoConfigureBefore, @AutoConfigureAfter, or @AutoConfigureOrder to control when your auto-configuration runs relative to others. For example, @AutoConfigureAfter(DataSourceAutoConfiguration.class) ensures the DataSource bean exists before yours runs."
+    },
+    {
+      "type": "markdown",
+      "content": "## Debugging Auto-configuration\n\n```bash\n# See which auto-configs were applied and why\njava -jar app.jar --debug\n\n# Or in application.properties\ndebug=true\n```\n\nThis prints the **auto-configuration report**:\n- **Positive matches** — configs that were applied\n- **Negative matches** — configs that were skipped and why\n- **Exclusions** — explicitly excluded\n\nAlso use the Actuator endpoint:\n```\nGET /actuator/conditions\n```"
+    },
+    {
+      "type": "quiz",
+      "question": "What does @ConditionalOnMissingBean achieve in an auto-configuration class?",
+      "options": [
+        "It creates a bean only when the application is missing its main class",
+        "It allows users to override the auto-configured bean by defining their own",
+        "It prevents the bean from being created if a bean of any type is missing",
+        "It skips auto-configuration entirely if no beans are found"
+      ],
+      "answer": 1,
+      "explanation": "@ConditionalOnMissingBean means 'only create this bean if the user hasn't already defined one of this type.' This is the override mechanism — if you define your own DataSource bean, Spring Boot's auto-configured one won't be created, giving you full control."
+    }
+  ]
+}

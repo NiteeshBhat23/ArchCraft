@@ -1,0 +1,59 @@
+{
+  "id": "pe-gitops",
+  "title": "GitOps",
+  "track": "platform-engineering",
+  "summary": "GitOps principles, ArgoCD, Flux, pull-based deployments, environment promotion, and multi-cluster management.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## GitOps Principles\n\nGitOps (Weaveworks, 2017) is a set of practices that uses Git as the single source of truth for declarative infrastructure and application deployments.\n\n**Four principles (OpenGitOps):**\n1. **Declarative** — desired state described declaratively (K8s YAML, Helm values)\n2. **Versioned and Immutable** — all state stored in Git with full history\n3. **Pulled Automatically** — software agents continuously reconcile live state with Git\n4. **Continuously Reconciled** — agents report drift and self-heal"
+    },
+    {
+      "type": "diagram",
+      "title": "GitOps Pull-Based Deployment",
+      "content": "graph LR\n    Dev[Developer] -->|git push| AppRepo[App Repo\\nsource code]\n    AppRepo -->|CI builds image| Registry[Container Registry]\n    CI[CI Pipeline] -->|update image tag| ConfigRepo[Config Repo\\nHelm values / K8s YAML]\n    ConfigRepo -->|ArgoCD detects diff| ArgoCD[ArgoCD\\nin cluster]\n    ArgoCD -->|reconcile| K8s[Kubernetes Cluster]\n    K8s -->|health status| ArgoCD\n    ArgoCD -->|sync status| ConfigRepo\n    style ArgoCD fill:#4f46e5,color:#fff\n    style ConfigRepo fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## ArgoCD — Core Concepts\n\n```yaml\n# ArgoCD Application — defines what to deploy where\napiVersion: argoproj.io/v1alpha1\nkind: Application\nmetadata:\n  name: order-service-prod\n  namespace: argocd\nspec:\n  project: ecommerce\n  source:\n    repoURL: https://github.com/org/k8s-config\n    targetRevision: HEAD\n    path: apps/order-service/production\n    helm:\n      valueFiles:\n        - values-prod.yaml\n  destination:\n    server: https://prod-cluster.example.com\n    namespace: production\n  syncPolicy:\n    automated:\n      prune: true       # delete resources removed from git\n      selfHeal: true    # revert manual kubectl changes\n    syncOptions:\n      - CreateNamespace=true\n```\n\n### ArgoCD sync states:\n- **Synced** — cluster matches Git ✓\n- **OutOfSync** — drift detected (manual change or new Git commit)\n- **Progressing** — deployment in progress\n- **Degraded** — sync failed or pods unhealthy"
+    },
+    {
+      "type": "markdown",
+      "content": "## Environment Promotion Strategy\n\n```\nApplication Repository (source code):\n  main branch → CI builds → image:git-sha-abc123\n\nConfig Repository (desired state):\n  envs/\n    dev/\n      order-service/values.yaml  (image: sha-abc123 - auto-promoted)\n    staging/\n      order-service/values.yaml  (image: sha-def456 - auto-promoted after dev tests pass)\n    production/\n      order-service/values.yaml  (image: sha-ghi789 - manual PR approval required)\n```\n\n```yaml\n# GitHub Actions — promote to staging after dev tests pass\n- name: Promote to staging\n  run: |\n    cd config-repo\n    yq eval '.image.tag = \"${{ github.sha }}\"' \\\n      -i envs/staging/order-service/values.yaml\n    git commit -am \"Promote order-service ${{ github.sha }} to staging\"\n    git push\n  # ArgoCD detects the change and deploys automatically\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "Multi-Environment GitOps Flow",
+      "content": "graph LR\n    Commit[Git commit] -->|CI| Image[Image: sha-abc123]\n    Image -->|auto| Dev[Dev Env\\nAutomatic]\n    Dev -->|tests pass, auto| Staging[Staging Env\\nAutomatic]\n    Staging -->|PR approval| Prod[Production\\nManual gate]\n    ArgoCD1[ArgoCD Dev] -->|watches| Dev\n    ArgoCD2[ArgoCD Staging] -->|watches| Staging\n    ArgoCD3[ArgoCD Prod] -->|watches| Prod\n    style Prod fill:#dc2626,color:#fff\n    style Dev fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## ApplicationSet — Managing Many Apps\n\nArgoCD ApplicationSet generates Application objects automatically from a template:\n\n```yaml\n# Deploy all services to all clusters from a single template\napiVersion: argoproj.io/v1alpha1\nkind: ApplicationSet\nspec:\n  generators:\n    - matrix:\n        generators:\n          - git:\n              directories:\n                - path: apps/*  # finds all service dirs\n          - clusters:           # for each cluster\n              selector:\n                matchLabels:\n                  env: production\n  template:\n    metadata:\n      name: '{{path.basename}}-{{name}}'\n    spec:\n      source:\n        path: '{{path}}'\n      destination:\n        server: '{{server}}'\n```\n\nResult: add a new directory → ApplicationSet automatically creates the ArgoCD Application and deploys it."
+    },
+    {
+      "type": "comparison",
+      "title": "ArgoCD vs Flux",
+      "columns": ["Aspect", "ArgoCD", "Flux"],
+      "rows": [
+        { "Aspect": "UI", "ArgoCD": "Rich web UI", "Flux": "CLI-focused (Weave GitOps for UI)" },
+        { "Aspect": "Multi-tenancy", "ArgoCD": "Projects + RBAC", "Flux": "Namespaced resources" },
+        { "Aspect": "ApplicationSet", "ArgoCD": "ApplicationSet controller", "Flux": "Kustomize generators" },
+        { "Aspect": "OCI support", "ArgoCD": "Yes (Helm OCI)", "Flux": "Yes (OCI artifacts)" },
+        { "Aspect": "CNCF graduated", "ArgoCD": "Yes", "Flux": "Yes" },
+        { "Aspect": "Best for", "ArgoCD": "Teams wanting visibility UI", "Flux": "Kubernetes-native, GitOps purists" }
+      ]
+    },
+    {
+      "type": "quiz",
+      "question": "What does ArgoCD's 'selfHeal' option do?",
+      "options": [
+        "It automatically fixes application bugs found in production",
+        "It automatically reverts manual kubectl changes to match the desired state in Git",
+        "It restarts crashed pods automatically",
+        "It updates the container image when a new version is available"
+      ],
+      "answer": 1,
+      "explanation": "selfHeal=true means ArgoCD continuously compares live cluster state with Git. If someone runs `kubectl edit` or manually patches a resource, ArgoCD detects the drift and reverts it back to the Git-declared state. This enforces Git as the single source of truth and prevents configuration drift from manual interventions."
+    }
+  ]
+}

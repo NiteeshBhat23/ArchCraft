@@ -1,0 +1,55 @@
+{
+  "id": "pe-db-devops",
+  "title": "Database DevOps",
+  "track": "platform-engineering",
+  "summary": "Schema migrations with Flyway and Liquibase, zero-downtime migrations, expand-contract pattern, and DB CI/CD.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## Database Schema as Code\n\nDatabase schema changes should be versioned, reviewed, and deployed with the same rigor as application code. Manual DDL scripts run on production are the source of many outages.\n\n**Two leading tools:**\n- **Flyway** — simple, SQL-based, convention over configuration\n- **Liquibase** — XML/YAML/SQL changesets, rollback support, more features"
+    },
+    {
+      "type": "diagram",
+      "title": "Flyway Migration Workflow",
+      "content": "graph LR\n    Dev[Developer writes\\nV3__add_email_index.sql] --> Git[Git commit]\n    Git --> CI[CI runs\\nflyway validate]\n    CI --> Deploy[Deploy app]\n    Deploy --> Flyway[Flyway runs\\non startup]\n    Flyway --> Schema[Schema updated]\n    Schema --> App[App starts]\n    style Flyway fill:#4f46e5,color:#fff\n    style App fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Flyway Configuration\n\n```sql\n-- src/main/resources/db/migration/V1__create_orders_table.sql\nCREATE TABLE orders (\n    id          BIGSERIAL PRIMARY KEY,\n    customer_id VARCHAR(36) NOT NULL,\n    status      VARCHAR(20) NOT NULL,\n    total       DECIMAL(10,2) NOT NULL,\n    created_at  TIMESTAMP NOT NULL DEFAULT NOW()\n);\n\n-- V2__add_order_reference.sql\nALTER TABLE orders ADD COLUMN reference VARCHAR(20);\nCREATE INDEX idx_orders_reference ON orders(reference);\n\n-- R__create_order_summary_view.sql  (repeatable migration)\nCREATE OR REPLACE VIEW order_summary AS\nSELECT status, COUNT(*) as count, SUM(total) as total\nFROM orders GROUP BY status;\n```\n\n```yaml\n# application.yml\nspring:\n  flyway:\n    enabled: true\n    locations: classpath:db/migration\n    baseline-on-migrate: false  # fail if DB has tables without flyway history\n    validate-on-migrate: true   # verify checksums match\n    out-of-order: false         # reject migrations applied out of sequence\n```\n\n**Naming convention:**\n- `V{version}__{description}.sql` — versioned (run once)\n- `U{version}__{description}.sql` — undo migration (rollback)\n- `R__{description}.sql` — repeatable (re-runs when checksum changes)"
+    },
+    {
+      "type": "markdown",
+      "content": "## Zero-Downtime Migrations: Expand-Contract\n\nThe most dangerous migrations are column renames and drops — they break running app instances during rolling deploys. The **Expand-Contract** pattern solves this with 3 deployment phases:\n\n### Example: rename `user_name` → `full_name`\n\n**Phase 1 — EXPAND** (deploy with old app still running)\n```sql\n-- V5__expand_add_full_name.sql\nALTER TABLE users ADD COLUMN full_name VARCHAR(255);\nUPDATE users SET full_name = user_name;  -- backfill\n-- Write trigger: keep both in sync\nCREATE OR REPLACE FUNCTION sync_name() RETURNS TRIGGER AS $$\nBEGIN\n  NEW.full_name := NEW.user_name;\n  RETURN NEW;\nEND;\n$$ LANGUAGE plpgsql;\nCREATE TRIGGER sync_user_name\n  BEFORE INSERT OR UPDATE ON users\n  FOR EACH ROW EXECUTE FUNCTION sync_name();\n```\n\n**Phase 2 — MIGRATE** (update app to use `full_name`)\n```java\n// Deploy new app version that reads/writes `full_name`\n// Both old (user_name) and new (full_name) work during rollout\n```\n\n**Phase 3 — CONTRACT** (after all instances updated)\n```sql\n-- V6__contract_drop_user_name.sql\nDROP TRIGGER sync_user_name ON users;\nALTER TABLE users DROP COLUMN user_name;\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "Expand-Contract Migration Timeline",
+      "content": "graph LR\n    E[Expand\\nAdd new column\\nBackfill data] --> App2[Deploy new app\\nUse new column]\n    App2 --> C[Contract\\nDrop old column]\n    subgraph During Expand\n        OldApp[Old app instances\\nuse user_name]\n        NewApp[New app instances\\nuse full_name]\n        OldApp & NewApp -->|both work| OK[No downtime]\n    end\n    style E fill:#4f46e5,color:#fff\n    style C fill:#059669,color:#fff\n    style OK fill:#059669,color:#fff"
+    },
+    {
+      "type": "comparison",
+      "title": "Flyway vs Liquibase",
+      "columns": ["Aspect", "Flyway", "Liquibase"],
+      "rows": [
+        { "Aspect": "Script format", "Flyway": "SQL (native), Java", "Liquibase": "XML, YAML, JSON, SQL" },
+        { "Aspect": "Rollback", "Flyway": "Undo scripts (teams edition)", "Liquibase": "Built-in rollback support" },
+        { "Aspect": "Complexity", "Flyway": "Simple, opinionated", "Liquibase": "Feature-rich, more complex" },
+        { "Aspect": "Dry run", "Flyway": "Yes", "Liquibase": "Yes (updateSQL)" },
+        { "Aspect": "Spring Boot support", "Flyway": "Auto-configured", "Liquibase": "Auto-configured" },
+        { "Aspect": "Best for", "Flyway": "Teams preferring SQL", "Liquibase": "Teams needing rollbacks, complex flows" }
+      ]
+    },
+    {
+      "type": "quiz",
+      "question": "Why is the Expand-Contract pattern necessary for zero-downtime column renames?",
+      "options": [
+        "Because databases don't support renaming columns directly",
+        "Because during a rolling deployment, old and new app versions run simultaneously — old instances need the old column, new instances need the new column",
+        "To prevent data loss during column type changes",
+        "Because Flyway doesn't support ALTER TABLE RENAME COLUMN"
+      ],
+      "answer": 1,
+      "explanation": "During a rolling deployment, old and new app versions run simultaneously for minutes/hours. If you rename the column in a single migration, old instances crash (column not found). Expand-Contract adds the new column (both names exist), deploys new code (uses new name), then drops the old column only after all instances are updated — no downtime."
+    }
+  ]
+}

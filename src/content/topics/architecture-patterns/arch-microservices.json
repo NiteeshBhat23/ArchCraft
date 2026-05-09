@@ -1,0 +1,65 @@
+{
+  "id": "arch-microservices",
+  "title": "Microservices Architecture",
+  "track": "architecture-patterns",
+  "summary": "Decomposition strategies, bounded contexts, service ownership, anti-patterns, and when microservices are the wrong choice.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## What are Microservices?\n\nMicroservices are an architectural style where an application is structured as a collection of **small, independently deployable services**, each running in its own process and communicating via lightweight APIs.\n\nKey characteristics:\n- **Single responsibility** — each service does one thing well\n- **Independent deployment** — deploy one service without touching others\n- **Own data store** — no shared databases between services\n- **Decentralized governance** — teams choose their own tech stacks"
+    },
+    {
+      "type": "diagram",
+      "title": "Monolith vs Microservices",
+      "content": "graph TB\n    subgraph Monolith\n        M[Single Deployable Unit]\n        M --- UI[UI Layer]\n        M --- BL[Business Logic]\n        M --- DAL[Data Layer]\n        M --- DB[(Single Database)]\n    end\n    subgraph Microservices\n        LB[API Gateway]\n        LB --> OS[Order Service]\n        LB --> US[User Service]\n        LB --> PS[Payment Service]\n        LB --> NS[Notification Service]\n        OS --- ODB[(Orders DB)]\n        US --- UDB[(Users DB)]\n        PS --- PDB[(Payments DB)]\n    end\n    style LB fill:#4f46e5,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Decomposition Strategies\n\n### Decompose by Business Capability\nIdentify the distinct capabilities the business performs and create a service per capability.\n\n```\nE-commerce capabilities:\n- Product Catalog   → ProductService\n- Shopping Cart     → CartService\n- Order Management  → OrderService\n- Payment           → PaymentService\n- Shipping          → ShippingService\n- Notifications     → NotificationService\n```\n\n### Decompose by Subdomain (DDD)\nUse Domain-Driven Design bounded contexts as service boundaries — discussed in detail in the DDD topic.\n\n### Strangler Fig Pattern\nGradually decompose a monolith by routing new features to microservices while the monolith handles legacy features. Over time, the monolith is \"strangled\" away."
+    },
+    {
+      "type": "diagram",
+      "title": "Service Decomposition Decision",
+      "content": "graph TD\n    Start[What should become a service?] --> BC[Business Capability]\n    BC --> Q1{Does it change\\nindependently?}\n    Q1 -->|Yes| Q2{Does it have\\nclear ownership?}\n    Q1 -->|No| Merge[Keep together]\n    Q2 -->|Yes| Q3{Does it scale\\ndifferently?}\n    Q2 -->|No| Merge\n    Q3 -->|Yes| Service[Good service candidate]\n    Q3 -->|No| Consider[Consider — may still be worth it]\n    style Service fill:#059669,color:#fff\n    style Merge fill:#6b7280,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## The Database Per Service Rule\n\nEach microservice must own its data and expose it only via its API. No other service should query your database directly.\n\n**Why?**\n- Allows independent schema evolution\n- Allows choosing the right DB per service (relational, document, cache)\n- Prevents tight coupling through shared DB\n\n```\n✓ OrderService reads users via UserService API\n✗ OrderService queries users table in UserService's DB\n```\n\n### Handling Cross-Service Data\n- **API calls** — synchronous (REST/gRPC) for real-time data needs\n- **Events** — async (Kafka) for data that can be eventually consistent\n- **Data replication** — read-only copies for performance (analytics)"
+    },
+    {
+      "type": "markdown",
+      "content": "## Common Anti-Patterns\n\n### Distributed Monolith\nMicroservices that must be deployed together because they're tightly coupled. You get the complexity of microservices without the benefits.\n\n### Chatty Services\nA single user request triggers 20+ synchronous service-to-service calls. Performance catastrophe.\n\n### Shared Database\nMultiple services writing to the same database. Defeats service independence.\n\n### Too Fine-Grained\nServices so small they have no autonomy. \"NanoServices\" — one function per service.\n\n### Microservices from Day One\nStarting with microservices before you understand your domain. Build a modular monolith first."
+    },
+    {
+      "type": "comparison",
+      "title": "Microservices vs Monolith Trade-offs",
+      "columns": ["Aspect", "Microservices", "Monolith"],
+      "rows": [
+        { "Aspect": "Deployment", "Microservices": "Independent per service", "Monolith": "Whole application" },
+        { "Aspect": "Scaling", "Microservices": "Per service (granular)", "Monolith": "Whole app (wasteful)" },
+        { "Aspect": "Development speed (small team)", "Microservices": "Slower (infra overhead)", "Monolith": "Faster" },
+        { "Aspect": "Development speed (large org)", "Microservices": "Faster (parallel teams)", "Monolith": "Slower (coordination)" },
+        { "Aspect": "Operational complexity", "Microservices": "High", "Monolith": "Low" },
+        { "Aspect": "Cross-service transactions", "Microservices": "Complex (Saga)", "Monolith": "Simple (DB transaction)" }
+      ]
+    },
+    {
+      "type": "callout",
+      "variant": "tip",
+      "title": "Start with a Modular Monolith",
+      "content": "Build a well-structured monolith with clear module boundaries first. When you genuinely need independent scaling or deployment of a specific module, extract it into a service. This avoids premature distribution and gives you time to understand your domain boundaries."
+    },
+    {
+      "type": "quiz",
+      "question": "What is a 'Distributed Monolith' anti-pattern?",
+      "options": [
+        "A monolith that is deployed across multiple data centers",
+        "Multiple services that are so tightly coupled they must be deployed together, giving the complexity of microservices without the benefits",
+        "A microservice that has grown too large and needs to be split",
+        "A monolith that uses distributed caching"
+      ],
+      "answer": 1,
+      "explanation": "A distributed monolith is arguably the worst of both worlds: you have the operational complexity of microservices (network calls, distributed tracing, separate deployments) but services are tightly coupled through shared databases, synchronous chains, or shared libraries — so you can't actually deploy them independently."
+    }
+  ]
+}

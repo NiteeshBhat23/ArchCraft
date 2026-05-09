@@ -1,0 +1,73 @@
+{
+  "id": "java-concurrency",
+  "title": "Concurrency Deep Dive",
+  "track": "java",
+  "summary": "Happens-before ordering, volatile, atomic classes, locks, and the Java Memory Model foundations of safe concurrency.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## The Core Problem: Visibility & Ordering\n\nIn a multi-threaded Java program, two problems can occur without proper synchronization:\n\n1. **Visibility** — changes made by one thread may not be visible to another\n2. **Ordering** — the CPU/compiler may reorder instructions for optimization\n\n```java\n// Thread 1\nboolean ready = false;\nint value = 0;\n\nvoid writer() {\n    value = 42;       // write 1\n    ready = true;     // write 2\n}\n\n// Thread 2 — may never see ready=true OR may see ready=true before value=42\nvoid reader() {\n    while (!ready) {}\n    System.out.println(value); // could print 0!\n}\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "CPU Cache Coherence Problem",
+      "content": "graph LR\n    subgraph CPU1\n        C1[L1 Cache\\nvalue=42]\n    end\n    subgraph CPU2\n        C2[L1 Cache\\nvalue=0]\n    end\n    RAM[Main Memory\\nvalue=0]\n    CPU1 -->|not yet flushed| RAM\n    CPU2 -->|reads stale| RAM\n    style C1 fill:#059669,color:#fff\n    style C2 fill:#dc2626,color:#fff\n    style RAM fill:#4f46e5,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Happens-Before\n\nThe **happens-before** relationship guarantees that memory writes by one specific statement are visible to reads by another. Key rules:\n\n- **Program order rule** — each action in a thread happens-before every action later in that thread\n- **Monitor lock rule** — `unlock` of a monitor happens-before every subsequent `lock` of that monitor\n- **Volatile variable rule** — write to volatile happens-before every subsequent read of that variable\n- **Thread start rule** — `Thread.start()` happens-before any action in the started thread\n- **Thread termination rule** — any action in thread happens-before `Thread.join()` returns\n- **Transitivity** — if A happens-before B, and B happens-before C, then A happens-before C"
+    },
+    {
+      "type": "diagram",
+      "title": "Happens-Before Chain",
+      "content": "graph LR\n    W[Thread 1: write x=42] -->|happens-before| V[Thread 1: volatile write flag=true]\n    V -->|happens-before via volatile| R[Thread 2: volatile read flag]\n    R -->|happens-before| RX[Thread 2: read x]\n    RX --> Result[sees x=42 guaranteed]\n    style W fill:#f59e0b,color:#fff\n    style V fill:#4f46e5,color:#fff\n    style Result fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## volatile\n\nDeclaring a field `volatile` provides two guarantees:\n1. **Visibility** — reads always see the latest write from any thread\n2. **No reordering** — reads/writes cannot be reordered relative to other volatile accesses\n\n```java\nprivate volatile boolean ready = false;\n\n// Now safe: write to value happens-before write to ready,\n// and any thread reading ready=true will also see value=42\n```\n\n**Limitations of volatile:**\n- Does NOT make compound actions atomic (`i++` is still not thread-safe)\n- Use for flags, status, single-writer scenarios\n- Use `AtomicInteger` / `synchronized` for compound operations"
+    },
+    {
+      "type": "markdown",
+      "content": "## Atomic Classes\n\n`java.util.concurrent.atomic` provides lock-free thread-safe operations using **CAS (Compare-And-Swap)** CPU instructions.\n\n```java\nAtomicInteger counter = new AtomicInteger(0);\n\n// Thread-safe increment — no synchronized needed\ncounter.incrementAndGet();\n\n// CAS: only set to newVal if current value == expected\ncounter.compareAndSet(expected, newVal);\n\n// AtomicReference for object references\nAtomicReference<Node> head = new AtomicReference<>();\n```\n\n### Key Atomic classes:\n- `AtomicInteger`, `AtomicLong`, `AtomicBoolean`\n- `AtomicReference<V>`, `AtomicStampedReference<V>` (solves ABA problem)\n- `LongAdder` — better than AtomicLong under high contention (striped counters)"
+    },
+    {
+      "type": "diagram",
+      "title": "CAS (Compare-And-Swap) Operation",
+      "content": "sequenceDiagram\n    participant T1 as Thread 1\n    participant Mem as Memory (x=5)\n    participant T2 as Thread 2\n    T1->>Mem: Read x=5\n    T2->>Mem: Read x=5\n    T1->>Mem: CAS(5, 6) → SUCCESS, x=6\n    T2->>Mem: CAS(5, 6) → FAIL (x is now 6)\n    T2->>Mem: Retry: Read x=6\n    T2->>Mem: CAS(6, 7) → SUCCESS, x=7"
+    },
+    {
+      "type": "markdown",
+      "content": "## ReentrantLock vs synchronized\n\n`ReentrantLock` provides everything `synchronized` does, plus:\n- **Timed lock acquisition** — `tryLock(5, TimeUnit.SECONDS)`\n- **Interruptible lock** — `lockInterruptibly()`\n- **Fairness** — `new ReentrantLock(true)` gives waiting threads in order\n- **Multiple conditions** — `Condition` objects for finer-grained wait/notify\n\n```java\nReentrantLock lock = new ReentrantLock();\nCondition notFull = lock.newCondition();\nCondition notEmpty = lock.newCondition();\n\nlock.lock();\ntry {\n    while (queue.isFull()) notFull.await();\n    queue.add(item);\n    notEmpty.signalAll();\n} finally {\n    lock.unlock(); // ALWAYS in finally!\n}\n```"
+    },
+    {
+      "type": "comparison",
+      "title": "Synchronization Primitives Comparison",
+      "columns": ["Mechanism", "Atomic?", "Visibility?", "Reentrancy", "Best For"],
+      "rows": [
+        { "Mechanism": "synchronized", "Atomic?": "✓", "Visibility?": "✓", "Reentrancy": "✓", "Best For": "Simple mutual exclusion" },
+        { "Mechanism": "volatile", "Atomic?": "✗ (reads/writes only)", "Visibility?": "✓", "Reentrancy": "N/A", "Best For": "Single-variable flags" },
+        { "Mechanism": "AtomicInteger", "Atomic?": "✓ CAS", "Visibility?": "✓", "Reentrancy": "N/A", "Best For": "Lock-free counters" },
+        { "Mechanism": "ReentrantLock", "Atomic?": "✓", "Visibility?": "✓", "Reentrancy": "✓", "Best For": "Advanced lock control" },
+        { "Mechanism": "StampedLock", "Atomic?": "✓", "Visibility?": "✓", "Reentrancy": "✗", "Best For": "Optimistic read-heavy" }
+      ]
+    },
+    {
+      "type": "callout",
+      "variant": "danger",
+      "title": "Always release locks in finally blocks",
+      "content": "If an exception is thrown inside a lock block without a finally, the lock will never be released, causing deadlock. Always use: lock.lock(); try { ... } finally { lock.unlock(); }"
+    },
+    {
+      "type": "quiz",
+      "question": "Which of the following makes `i++` thread-safe on a shared counter?",
+      "options": [
+        "Declaring i as volatile",
+        "Using AtomicInteger and calling incrementAndGet()",
+        "Declaring i as final",
+        "Using i inside a try-finally block"
+      ],
+      "answer": 1,
+      "explanation": "i++ is a read-modify-write compound operation (not atomic). volatile only guarantees visibility of single reads/writes. AtomicInteger.incrementAndGet() uses CAS to atomically read and increment, making it thread-safe without locks."
+    }
+  ]
+}

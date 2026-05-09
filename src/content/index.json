@@ -1,0 +1,114 @@
+{
+  "tracks": [
+    {
+      "id": "java",
+      "title": "Advanced Java",
+      "description": "Deep internals: JVM, concurrency, generics, modern Java features and performance tuning",
+      "icon": "☕",
+      "color": "orange",
+      "topics": [
+        { "id": "java-jvm-internals", "title": "JVM Internals", "level": "advanced", "readTime": 20, "tags": ["jvm", "gc", "bytecode", "class-loading"], "prerequisites": [] },
+        { "id": "java-generics", "title": "Generics & Type Erasure", "level": "advanced", "readTime": 15, "tags": ["generics", "type-erasure", "wildcards", "pecs"], "prerequisites": ["java-jvm-internals"] },
+        { "id": "java-concurrency", "title": "Concurrency Deep Dive", "level": "advanced", "readTime": 25, "tags": ["concurrency", "happens-before", "volatile", "locks"], "prerequisites": ["java-jvm-internals"] },
+        { "id": "java-completable-future", "title": "CompletableFuture & Reactive", "level": "advanced", "readTime": 18, "tags": ["async", "completablefuture", "reactive", "non-blocking"], "prerequisites": ["java-concurrency"] },
+        { "id": "java-memory-model", "title": "Java Memory Model", "level": "advanced", "readTime": 16, "tags": ["jmm", "memory", "visibility", "ordering"], "prerequisites": ["java-concurrency"] },
+        { "id": "java-design-patterns", "title": "Design Patterns in Java", "level": "advanced", "readTime": 22, "tags": ["patterns", "gof", "solid", "refactoring"], "prerequisites": [] },
+        { "id": "java-modern-features", "title": "Java 17–21 Features", "level": "advanced", "readTime": 20, "tags": ["records", "sealed-classes", "virtual-threads", "pattern-matching"], "prerequisites": [] },
+        { "id": "java-performance", "title": "Performance Profiling & JVM Tuning", "level": "architect", "readTime": 22, "tags": ["profiling", "jfr", "jvm-tuning", "heap-analysis"], "prerequisites": ["java-jvm-internals"] }
+      ]
+    },
+    {
+      "id": "spring-boot",
+      "title": "Spring Boot",
+      "description": "Autoconfiguration internals, security, JPA deep dives, testing, and observability",
+      "icon": "🌱",
+      "color": "green",
+      "topics": [
+        { "id": "spring-autoconfiguration", "title": "Auto-configuration Internals", "level": "advanced", "readTime": 18, "tags": ["autoconfiguration", "conditions", "spring-factories"], "prerequisites": [] },
+        { "id": "spring-di", "title": "Dependency Injection Deep Dive", "level": "advanced", "readTime": 20, "tags": ["di", "bean-lifecycle", "scopes", "proxies"], "prerequisites": ["spring-autoconfiguration"] },
+        { "id": "spring-security", "title": "Spring Security", "level": "advanced", "readTime": 25, "tags": ["security", "jwt", "oauth2", "oidc", "filter-chain"], "prerequisites": ["spring-di"] },
+        { "id": "spring-data-jpa", "title": "Spring Data JPA Deep Dive", "level": "advanced", "readTime": 22, "tags": ["jpa", "n+1", "fetch-strategies", "specifications"], "prerequisites": ["spring-di"] },
+        { "id": "spring-mvc-webflux", "title": "Spring MVC vs WebFlux", "level": "advanced", "readTime": 18, "tags": ["mvc", "webflux", "reactive", "backpressure", "threading"], "prerequisites": ["spring-di"] },
+        { "id": "spring-testing", "title": "Testing Strategy", "level": "advanced", "readTime": 20, "tags": ["testing", "mockmvc", "testcontainers", "wiremock", "contracts"], "prerequisites": ["spring-di"] },
+        { "id": "spring-observability", "title": "Actuator, Micrometer & Observability", "level": "advanced", "readTime": 16, "tags": ["actuator", "micrometer", "metrics", "health"], "prerequisites": ["spring-autoconfiguration"] },
+        { "id": "spring-configuration", "title": "Configuration Management", "level": "advanced", "readTime": 14, "tags": ["profiles", "config-server", "vault", "externalized-config"], "prerequisites": ["spring-autoconfiguration"] }
+      ]
+    },
+    {
+      "id": "system-design",
+      "title": "System Design",
+      "description": "Scalability, caching, databases, APIs, messaging, and real large-scale system blueprints",
+      "icon": "🏗️",
+      "color": "blue",
+      "topics": [
+        { "id": "sd-scalability", "title": "Scalability Fundamentals", "level": "advanced", "readTime": 18, "tags": ["scalability", "horizontal", "vertical", "stateless"], "prerequisites": [] },
+        { "id": "sd-load-balancing", "title": "Load Balancing", "level": "advanced", "readTime": 16, "tags": ["load-balancer", "l4", "l7", "consistent-hashing"], "prerequisites": ["sd-scalability"] },
+        { "id": "sd-caching", "title": "Caching Strategies", "level": "advanced", "readTime": 20, "tags": ["caching", "redis", "eviction", "cache-invalidation", "thundering-herd"], "prerequisites": ["sd-scalability"] },
+        { "id": "sd-databases", "title": "Database Design at Scale", "level": "advanced", "readTime": 22, "tags": ["sharding", "replication", "indexes", "acid", "base"], "prerequisites": ["sd-scalability"] },
+        { "id": "sd-api-design", "title": "API Design", "level": "advanced", "readTime": 18, "tags": ["rest", "grpc", "graphql", "versioning"], "prerequisites": [] },
+        { "id": "sd-message-queues", "title": "Message Queues", "level": "advanced", "readTime": 20, "tags": ["kafka", "rabbitmq", "ordering", "idempotency"], "prerequisites": ["sd-scalability"] },
+        { "id": "sd-rate-limiting", "title": "Rate Limiting", "level": "advanced", "readTime": 14, "tags": ["rate-limiting", "token-bucket", "sliding-window"], "prerequisites": ["sd-scalability"] },
+        { "id": "sd-cdn-networking", "title": "CDN, DNS & Networking", "level": "advanced", "readTime": 16, "tags": ["cdn", "dns", "tcp", "networking", "anycast"], "prerequisites": [] },
+        { "id": "sd-real-systems", "title": "Real System Designs", "level": "architect", "readTime": 35, "tags": ["url-shortener", "twitter", "payment", "notification"], "prerequisites": ["sd-scalability", "sd-databases", "sd-caching"] }
+      ]
+    },
+    {
+      "id": "distributed-systems",
+      "title": "Distributed Systems",
+      "description": "CAP theorem, consensus, distributed transactions, event sourcing, and failure modes",
+      "icon": "🌐",
+      "color": "purple",
+      "topics": [
+        { "id": "ds-cap-theorem", "title": "CAP Theorem", "level": "advanced", "readTime": 16, "tags": ["cap", "consistency", "availability", "partition-tolerance"], "prerequisites": [] },
+        { "id": "ds-consistency-models", "title": "Consistency Models", "level": "advanced", "readTime": 18, "tags": ["eventual-consistency", "strong-consistency", "causal", "linearizability"], "prerequisites": ["ds-cap-theorem"] },
+        { "id": "ds-consensus", "title": "Consensus Algorithms", "level": "architect", "readTime": 22, "tags": ["raft", "paxos", "leader-election", "consensus"], "prerequisites": ["ds-cap-theorem"] },
+        { "id": "ds-distributed-transactions", "title": "Distributed Transactions", "level": "architect", "readTime": 20, "tags": ["2pc", "3pc", "saga", "dtx"], "prerequisites": ["ds-consistency-models"] },
+        { "id": "ds-event-sourcing", "title": "Event Sourcing + CQRS", "level": "architect", "readTime": 22, "tags": ["event-sourcing", "cqrs", "projections", "event-store"], "prerequisites": ["ds-consistency-models"] },
+        { "id": "ds-service-mesh", "title": "Service Mesh", "level": "architect", "readTime": 18, "tags": ["istio", "envoy", "sidecar", "mtls", "traffic-management"], "prerequisites": [] },
+        { "id": "ds-observability", "title": "Observability", "level": "advanced", "readTime": 18, "tags": ["traces", "logs", "metrics", "opentelemetry", "three-pillars"], "prerequisites": [] },
+        { "id": "ds-failure-modes", "title": "Failure Modes & Resilience", "level": "architect", "readTime": 20, "tags": ["split-brain", "cascading-failures", "bulkhead", "circuit-breaker"], "prerequisites": ["ds-cap-theorem"] }
+      ]
+    },
+    {
+      "id": "architecture-patterns",
+      "title": "Architecture Patterns",
+      "description": "DDD, Hexagonal Architecture, Event-driven, CQRS, API Gateway, Data Mesh, and more",
+      "icon": "🏛️",
+      "color": "indigo",
+      "topics": [
+        { "id": "arch-microservices", "title": "Microservices Architecture", "level": "architect", "readTime": 25, "tags": ["microservices", "bounded-context", "decomposition", "anti-patterns"], "prerequisites": [] },
+        { "id": "arch-monolith-migration", "title": "Monolith to Microservices", "level": "architect", "readTime": 22, "tags": ["strangler-fig", "branch-by-abstraction", "migration", "data-migration"], "prerequisites": ["arch-microservices"] },
+        { "id": "arch-ddd", "title": "Domain-Driven Design (DDD)", "level": "architect", "readTime": 28, "tags": ["ddd", "aggregates", "entities", "value-objects", "domain-events"], "prerequisites": ["arch-microservices"] },
+        { "id": "arch-hexagonal", "title": "Hexagonal / Clean Architecture", "level": "architect", "readTime": 22, "tags": ["hexagonal", "clean-architecture", "ports-adapters", "dependency-inversion"], "prerequisites": [] },
+        { "id": "arch-event-driven", "title": "Event-Driven Architecture", "level": "architect", "readTime": 20, "tags": ["event-driven", "choreography", "orchestration", "event-mesh"], "prerequisites": ["arch-microservices"] },
+        { "id": "arch-cqrs-readmodels", "title": "CQRS & Read Models", "level": "architect", "readTime": 20, "tags": ["cqrs", "read-models", "projections", "eventual-consistency"], "prerequisites": ["arch-event-driven"] },
+        { "id": "arch-api-gateway", "title": "API Gateway Patterns", "level": "architect", "readTime": 18, "tags": ["api-gateway", "bff", "aggregation", "auth-offloading"], "prerequisites": ["arch-microservices"] },
+        { "id": "arch-sidecar-ambassador", "title": "Sidecar & Ambassador Patterns", "level": "architect", "readTime": 16, "tags": ["sidecar", "ambassador", "cross-cutting", "dapr"], "prerequisites": ["arch-microservices"] },
+        { "id": "arch-saga-deepdive", "title": "Saga Pattern Deep Dive", "level": "architect", "readTime": 22, "tags": ["saga", "choreography", "orchestration", "compensation"], "prerequisites": ["arch-event-driven"] },
+        { "id": "arch-data-mesh", "title": "Data Mesh", "level": "architect", "readTime": 20, "tags": ["data-mesh", "data-products", "domain-ownership", "federated-governance"], "prerequisites": ["arch-ddd"] },
+        { "id": "arch-multi-tenancy", "title": "Multi-Tenancy Patterns", "level": "architect", "readTime": 18, "tags": ["multi-tenancy", "tenant-isolation", "silo", "pool"], "prerequisites": ["arch-microservices"] },
+        { "id": "arch-security-architecture", "title": "Security Architecture", "level": "architect", "readTime": 24, "tags": ["zero-trust", "defence-in-depth", "secrets-management", "threat-modelling"], "prerequisites": [] }
+      ]
+    },
+    {
+      "id": "platform-engineering",
+      "title": "Platform Engineering",
+      "description": "IDP, Kubernetes, GitOps, CI/CD, IaC, SRE, DevSecOps, and cloud-native at scale",
+      "icon": "⚙️",
+      "color": "teal",
+      "topics": [
+        { "id": "pe-idp", "title": "Internal Developer Platform (IDP)", "level": "architect", "readTime": 20, "tags": ["idp", "backstage", "golden-paths", "self-service"], "prerequisites": [] },
+        { "id": "pe-kubernetes", "title": "Kubernetes Deep Dive", "level": "architect", "readTime": 28, "tags": ["kubernetes", "control-plane", "scheduling", "networking", "k8s"], "prerequisites": [] },
+        { "id": "pe-gitops", "title": "GitOps", "level": "architect", "readTime": 18, "tags": ["gitops", "argocd", "flux", "pull-model", "environment-promotion"], "prerequisites": ["pe-kubernetes"] },
+        { "id": "pe-cicd", "title": "CI/CD Pipeline Design", "level": "architect", "readTime": 20, "tags": ["cicd", "trunk-based", "feature-flags", "blue-green", "canary"], "prerequisites": [] },
+        { "id": "pe-iac", "title": "Infrastructure as Code", "level": "architect", "readTime": 18, "tags": ["terraform", "iac", "modules", "state-management"], "prerequisites": [] },
+        { "id": "pe-cloud-native", "title": "Cloud-Native Patterns", "level": "architect", "readTime": 18, "tags": ["cloud-native", "12-factor", "finops", "cloud-agnostic"], "prerequisites": [] },
+        { "id": "pe-sre", "title": "Site Reliability Engineering (SRE)", "level": "architect", "readTime": 22, "tags": ["sre", "sli", "slo", "sla", "error-budget", "toil"], "prerequisites": [] },
+        { "id": "pe-devsecops", "title": "Security in the Pipeline (DevSecOps)", "level": "architect", "readTime": 18, "tags": ["devsecops", "sast", "dast", "supply-chain", "sbom"], "prerequisites": ["pe-cicd"] },
+        { "id": "pe-dx", "title": "Developer Experience (DX)", "level": "architect", "readTime": 16, "tags": ["dx", "feedback-loops", "local-dev", "toolchain"], "prerequisites": ["pe-idp"] },
+        { "id": "pe-db-devops", "title": "Database DevOps", "level": "architect", "readTime": 16, "tags": ["flyway", "liquibase", "zero-downtime", "schema-migration"], "prerequisites": ["pe-cicd"] },
+        { "id": "pe-cost-optimisation", "title": "Cost Optimisation at Scale", "level": "architect", "readTime": 16, "tags": ["finops", "right-sizing", "spot-instances", "cost-observability"], "prerequisites": ["pe-sre"] }
+      ]
+    }
+  ]
+}

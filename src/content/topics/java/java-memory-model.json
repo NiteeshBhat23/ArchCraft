@@ -1,0 +1,59 @@
+{
+  "id": "java-memory-model",
+  "title": "Java Memory Model",
+  "track": "java",
+  "summary": "The formal specification of how threads interact through memory — visibility, ordering guarantees, and safe publication.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## What is the Java Memory Model?\n\nThe Java Memory Model (JMM), defined in the Java Language Specification, specifies the **minimum guarantees** the JVM must make about when writes by one thread become visible to reads by another. Without it, CPUs and compilers would freely reorder instructions, making concurrent code unpredictable.\n\nThe JMM is defined in terms of **happens-before** relationships — a partial ordering on actions."
+    },
+    {
+      "type": "diagram",
+      "title": "JMM — Thread Local Working Memory vs Main Memory",
+      "content": "graph LR\n    subgraph Thread 1\n        WM1[Working Memory\\nlocal cached copies]\n    end\n    subgraph Thread 2\n        WM2[Working Memory\\nlocal cached copies]\n    end\n    MM[Main Memory\\nShared State]\n    WM1 <-->|read/write| MM\n    WM2 <-->|read/write| MM\n    style MM fill:#4f46e5,color:#fff\n    style WM1 fill:#059669,color:#fff\n    style WM2 fill:#d97706,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Safe Publication\n\n**Safe publication** means making an object available to other threads in a way that guarantees they see a fully initialized object.\n\n### Unsafe publication:\n```java\n// NOT safely published — another thread may see partially initialized object\npublic static Holder holder;\nvoid init() { holder = new Holder(42); } // write without synchronization\n```\n\n### Safe publication mechanisms:\n1. Initializing from a **static initializer** (`static Holder h = new Holder(42);`)\n2. Storing into a **volatile** field\n3. Storing into a field properly **synchronized** on a common lock\n4. Storing into a **final** field — the JMM provides special freeze action guarantees\n\n```java\n// Safe: final fields guaranteed visible after constructor completes\npublic class ImmutablePoint {\n    public final int x, y;\n    public ImmutablePoint(int x, int y) { this.x = x; this.y = y; }\n}\n```"
+    },
+    {
+      "type": "callout",
+      "variant": "tip",
+      "title": "final fields have special JMM guarantees",
+      "content": "The JMM guarantees that final fields are visible to all threads after the constructor completes, without any synchronization. This is why immutable objects are always safely publishable — store once, read anywhere."
+    },
+    {
+      "type": "diagram",
+      "title": "Double-Checked Locking — Broken vs Fixed",
+      "content": "graph TD\n    subgraph Broken DCL\n        B1[\"if (instance == null)\"] --> B2[synchronized block]\n        B2 --> B3[\"if (instance == null)\"]\n        B3 --> B4[\"instance = new Singleton()\"]\n        B4 --> B5[\"⚠️ Another thread may see\\npartially constructed object!\"]\n    end\n    subgraph Fixed DCL with volatile\n        F1[\"private volatile static Singleton instance\"] --> F2[\"if (instance == null)\"]\n        F2 --> F3[synchronized block]\n        F3 --> F4[\"if (instance == null)\"]\n        F4 --> F5[\"instance = new Singleton()\"]\n        F5 --> F6[\"✓ volatile write flushes\\nall writes before it\"]\n    end\n    style B5 fill:#dc2626,color:#fff\n    style F6 fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Reordering Examples\n\nThe JVM/CPU may reorder instructions as long as **within a single thread** the result is the same (as-if-serial semantics). But this breaks multi-threaded code:\n\n```java\nint a = 0, b = 0;\nboolean x = false, y = false;\n\n// Thread 1        // Thread 2\na = 1;             b = 1;\nx = true;          y = true;\n\n// After both complete:\n// Can we have x=true AND y=true AND a=0 AND b=0?\n// YES! Both threads may reorder their writes!\n```\n\n## Memory Barriers\n\nThe JVM inserts **memory barriers** (CPU fences) to enforce ordering:\n- **LoadLoad** — prevents reordering of loads\n- **StoreStore** — prevents reordering of stores\n- **LoadStore** / **StoreLoad** — mixed ordering\n\n`volatile` writes/reads and `synchronized` blocks automatically insert the appropriate barriers."
+    },
+    {
+      "type": "comparison",
+      "title": "Visibility & Ordering Guarantees",
+      "columns": ["Construct", "Visibility", "Ordering", "Atomicity"],
+      "rows": [
+        { "Construct": "synchronized", "Visibility": "✓ full", "Ordering": "✓ full", "Atomicity": "✓ block" },
+        { "Construct": "volatile read/write", "Visibility": "✓ full", "Ordering": "✓ acquire/release", "Atomicity": "✓ single r/w" },
+        { "Construct": "final field", "Visibility": "✓ after ctor", "Ordering": "✓ freeze action", "Atomicity": "✓ single r/w" },
+        { "Construct": "plain field", "Visibility": "✗ not guaranteed", "Ordering": "✗ not guaranteed", "Atomicity": "✗ not guaranteed" }
+      ]
+    },
+    {
+      "type": "quiz",
+      "question": "Why is double-checked locking unsafe without volatile in Java?",
+      "options": [
+        "Because synchronized blocks are too slow without volatile",
+        "Because the JVM may reorder the write to the reference before the object is fully constructed",
+        "Because null checks are not thread-safe",
+        "Because static fields require volatile to be initialized"
+      ],
+      "answer": 1,
+      "explanation": "Without volatile, the JVM may reorder the write to the instance reference before completing the object's constructor writes. Another thread doing the outer null check may see a non-null but partially initialized object. volatile's happens-before guarantees prevent this reordering."
+    }
+  ]
+}

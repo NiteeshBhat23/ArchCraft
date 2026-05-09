@@ -1,0 +1,46 @@
+{
+  "id": "pe-sre",
+  "title": "Site Reliability Engineering (SRE)",
+  "track": "platform-engineering",
+  "summary": "SLIs, SLOs, SLAs, error budgets, toil reduction, incident management, and building a reliability culture.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## SRE Fundamentals\n\nSite Reliability Engineering applies software engineering to operations. Google coined the term: SREs are software engineers who build and run production systems.\n\n**Core metrics:**\n- **SLI** (Service Level Indicator) — a measurable metric: e.g. `success_requests / total_requests`\n- **SLO** (Service Level Objective) — your target: 99.9% of requests succeed\n- **SLA** (Service Level Agreement) — contractual commitment: if SLO breached, customer gets credit\n- **Error Budget** — `100% - SLO` = allowed unreliability: 0.1% = 43.8 min/month"
+    },
+    {
+      "type": "diagram",
+      "title": "Error Budget Calculation",
+      "content": "graph LR\n    SLO[SLO: 99.9%] --> EB[Error Budget: 0.1%]\n    EB --> Monthly[Monthly: 43.8 minutes]\n    EB --> Weekly[Weekly: 10.1 minutes]\n    EB --> Daily[Daily: 1.44 minutes]\n    Monthly --> Used[Used this month: 12 min]\n    Monthly --> Remaining[Remaining: 31.8 min]\n    Remaining -->|budget OK| Ship[Ship features]\n    style Remaining fill:#059669,color:#fff\n    style SLO fill:#4f46e5,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Defining Good SLIs\n\n### Availability SLI\n```promql\n# Prometheus: requests that didn't return 5xx\nsum(rate(http_requests_total{status!~\"5..\"}[5m]))\n/\nsum(rate(http_requests_total[5m]))\n```\n\n### Latency SLI\n```promql\n# % of requests served within 200ms\nsum(rate(http_request_duration_seconds_bucket{le=\"0.2\"}[5m]))\n/\nsum(rate(http_request_duration_seconds_count[5m]))\n```\n\n### Good SLI checklist:\n- Measures what users actually experience\n- Aggregated — ratio over time window, not point-in-time\n- Actionable — you can investigate and improve it\n- Not too many SLIs — 3-5 per service is ideal"
+    },
+    {
+      "type": "markdown",
+      "content": "## Incident Management\n\n### Incident Severity Levels:\n| Severity | Definition | Response Time |\n|---|---|---|\n| **P0/SEV1** | Complete outage, data loss | Immediate, page on-call |\n| **P1/SEV2** | Major feature broken, significant user impact | < 15 min |\n| **P2/SEV3** | Partial degradation, some users affected | < 1 hour |\n| **P3/SEV4** | Minor issue, workaround exists | Next business day |\n\n### Incident Response Process:\n1. **Detect** — alert fires (Prometheus → AlertManager → PagerDuty)\n2. **Triage** — assess severity, page appropriate on-call\n3. **Mitigate** — restore service FIRST (rollback, scale up, disable feature)\n4. **Investigate** — root cause analysis while stable\n5. **Resolve** — fix underlying issue\n6. **Post-mortem** — blameless retrospective, action items\n\n```\n// Post-mortem template\nTitle: [DATE] Order service latency spike\nSeverity: P1\nDuration: 47 minutes\nImpact: 15% of checkout requests failed\n\nTimeline:\n14:32 - Alert fires: p99 latency > 2s\n14:38 - On-call acknowledges\n14:45 - Root cause identified: DB connection pool exhausted\n14:52 - Mitigation: increased pool size + restarted service\n15:19 - Fully resolved\n\nRoot Cause: New feature deployed at 14:20 had N+1 query\nAction Items:\n- Add query count assertion in integration tests [owner: @dev, due: 2024-02-01]\n- Add DB connection pool monitoring alert [owner: @sre, due: 2024-01-25]\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "Incident Response Flow",
+      "content": "graph LR\n    Alert[Alert Fires] -->|PagerDuty| OnCall[On-Call Notified]\n    OnCall --> Triage{Severity?}\n    Triage -->|P0/P1| Bridge[War Room\\nAll hands]\n    Triage -->|P2/P3| Solo[Solo Response]\n    Bridge & Solo --> Mitigate[Mitigate First\\nRollback/Scale]\n    Mitigate --> Investigate[Root Cause]\n    Investigate --> Fix[Permanent Fix]\n    Fix --> Postmortem[Blameless Post-mortem]\n    Postmortem --> Actions[Action Items]\n    style Mitigate fill:#dc2626,color:#fff\n    style Postmortem fill:#4f46e5,color:#fff\n    style Actions fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Toil Reduction\n\nToil is manual, repetitive, automatable operational work. SRE principle: keep toil under 50% of work.\n\n**Identify toil:**\n- Manual — requires human to do it\n- Repetitive — done over and over\n- Automatable — a machine could do it\n- No lasting value — doesn't improve the system\n\n**Toil elimination examples:**\n```\nToil: Manually restart service when OOM every Monday\n→ Engineering: Fix memory leak + configure HPA\n\nToil: Manually rotate DB credentials monthly  \n→ Engineering: Vault dynamic secrets with auto-rotation\n\nToil: Approve same access requests repeatedly\n→ Engineering: Self-service with policy-based auto-approval\n\nToil: Check 10 dashboards during deployments\n→ Engineering: Automated deployment health check + auto-rollback\n```"
+    },
+    {
+      "type": "quiz",
+      "question": "In SRE, why is 'mitigating' an incident prioritized over 'fixing' it?",
+      "options": [
+        "Because mitigation is easier than finding the root cause",
+        "Because restoring service for users immediately is more valuable than taking time to find a perfect fix while the outage continues",
+        "Because SREs don't have permission to fix code",
+        "Because mitigation prevents future incidents of the same type"
+      ],
+      "answer": 1,
+      "explanation": "During an active incident, every minute of downtime affects users. Mitigation (rollback, failover, scale up, disable feature flag) restores service quickly even without knowing the root cause. Once service is restored, the team can investigate carefully without time pressure. 'Stop the bleeding first, then diagnose' is the SRE approach."
+    }
+  ]
+}

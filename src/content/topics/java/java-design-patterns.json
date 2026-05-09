@@ -1,0 +1,65 @@
+{
+  "id": "java-design-patterns",
+  "title": "Design Patterns in Java",
+  "track": "java",
+  "summary": "GoF patterns applied in modern Java: creational, structural, and behavioral patterns with real Spring/Java examples.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## Why Design Patterns?\n\nDesign patterns are **reusable solutions to common problems**. They provide shared vocabulary and proven approaches. In Spring/Java, many patterns are used implicitly — recognizing them helps you understand the framework deeply.\n\n### Three Categories\n- **Creational** — how objects are created (Factory, Builder, Singleton)\n- **Structural** — how objects are composed (Adapter, Decorator, Proxy)\n- **Behavioral** — how objects communicate (Strategy, Observer, Command)"
+    },
+    {
+      "type": "diagram",
+      "title": "GoF Pattern Categories",
+      "content": "mindmap\n  root((GoF Patterns))\n    Creational\n      Factory Method\n      Abstract Factory\n      Builder\n      Singleton\n      Prototype\n    Structural\n      Adapter\n      Decorator\n      Proxy\n      Facade\n      Composite\n    Behavioral\n      Strategy\n      Observer\n      Command\n      Template Method\n      Chain of Responsibility"
+    },
+    {
+      "type": "markdown",
+      "content": "## Creational Patterns\n\n### Builder Pattern\nUsed heavily in Java: `StringBuilder`, `HttpRequest.Builder`, Lombok `@Builder`\n\n```java\n// Without Builder — telescoping constructors are ugly\nnew Pizza(\"large\", true, false, true, false);\n\n// With Builder — readable and safe\nPizza pizza = Pizza.builder()\n    .size(\"large\")\n    .cheese(true)\n    .pepperoni(true)\n    .build();\n```\n\n### Factory Method\nSpring's `BeanFactory`, `DriverManager.getConnection()`, `Calendar.getInstance()`\n\n```java\npublic interface NotificationSender {\n    void send(String message);\n}\n\n// Factory decides which implementation to create\npublic class NotificationFactory {\n    public static NotificationSender create(String type) {\n        return switch (type) {\n            case \"email\" -> new EmailSender();\n            case \"sms\"   -> new SmsSender();\n            case \"push\"  -> new PushSender();\n            default -> throw new IllegalArgumentException(type);\n        };\n    }\n}\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "Strategy Pattern — Runtime Algorithm Swapping",
+      "content": "classDiagram\n    class SortContext {\n        -SortStrategy strategy\n        +setStrategy(SortStrategy)\n        +sort(data)\n    }\n    class SortStrategy {\n        <<interface>>\n        +sort(data)\n    }\n    class QuickSort {\n        +sort(data)\n    }\n    class MergeSort {\n        +sort(data)\n    }\n    class TimSort {\n        +sort(data)\n    }\n    SortContext --> SortStrategy\n    SortStrategy <|.. QuickSort\n    SortStrategy <|.. MergeSort\n    SortStrategy <|.. TimSort"
+    },
+    {
+      "type": "markdown",
+      "content": "## Structural Patterns\n\n### Decorator Pattern\nJava I/O streams are classic decorators. Spring's `HttpServletRequestWrapper`.\n\n```java\n// Core component\nInputStream raw = new FileInputStream(\"data.bin\");\n\n// Decorate with buffering\nInputStream buffered = new BufferedInputStream(raw);\n\n// Decorate with decompression\nInputStream gzipped = new GZIPInputStream(buffered);\n\n// Each layer adds behavior without modifying the original\n```\n\n### Proxy Pattern\nSpring AOP, JDK Dynamic Proxy, CGLIB — almost everything in Spring is a proxy!\n\n```java\n@Service\npublic class UserService {\n    @Transactional // Spring wraps this in a proxy that manages transactions\n    public void saveUser(User user) { ... }\n}\n// The @Transactional bean you get injected is a PROXY, not the real UserService\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "Proxy Pattern — Spring @Transactional",
+      "content": "sequenceDiagram\n    participant C as Caller\n    participant P as Spring Proxy\n    participant S as UserService\n    participant DB as Database\n    C->>P: saveUser(user)\n    P->>P: Begin Transaction\n    P->>S: saveUser(user) [real call]\n    S->>DB: INSERT\n    DB-->>S: OK\n    S-->>P: return\n    P->>P: Commit Transaction\n    P-->>C: return\n    Note over P: On exception: Rollback"
+    },
+    {
+      "type": "markdown",
+      "content": "## Behavioral Patterns\n\n### Observer / Event Pattern\nSpring's `ApplicationEventPublisher`, `@EventListener`\n\n```java\n// Event\npublic class OrderCreatedEvent {\n    private final Order order;\n}\n\n// Publisher\n@Service\npublic class OrderService {\n    @Autowired ApplicationEventPublisher events;\n    \n    public void createOrder(Order order) {\n        repo.save(order);\n        events.publishEvent(new OrderCreatedEvent(order)); // fire & forget\n    }\n}\n\n// Listener\n@Component\npublic class EmailListener {\n    @EventListener\n    public void onOrder(OrderCreatedEvent e) {\n        emailService.sendConfirmation(e.getOrder());\n    }\n}\n```\n\n### Template Method\nSpring's `JdbcTemplate`, `RestTemplate`, `AbstractController`"
+    },
+    {
+      "type": "comparison",
+      "title": "Spring Uses These Patterns Everywhere",
+      "columns": ["Pattern", "Spring Example"],
+      "rows": [
+        { "Pattern": "Factory", "Spring Example": "BeanFactory, ApplicationContext" },
+        { "Pattern": "Singleton", "Spring Example": "Default bean scope" },
+        { "Pattern": "Proxy", "Spring Example": "@Transactional, @Cacheable, AOP" },
+        { "Pattern": "Template Method", "Spring Example": "JdbcTemplate, RestTemplate" },
+        { "Pattern": "Observer", "Spring Example": "ApplicationEventPublisher + @EventListener" },
+        { "Pattern": "Decorator", "Spring Example": "BeanDefinitionDecorator, HandlerInterceptor chains" },
+        { "Pattern": "Chain of Responsibility", "Spring Example": "Filter chain, HandlerInterceptor chain" }
+      ]
+    },
+    {
+      "type": "quiz",
+      "question": "When Spring applies @Transactional, which design pattern does it use?",
+      "options": [
+        "Decorator — wraps the bean with transactional behavior",
+        "Proxy — creates a proxy object that intercepts method calls and manages transactions",
+        "Strategy — selects a transaction strategy at runtime",
+        "Factory — creates transaction objects on demand"
+      ],
+      "answer": 1,
+      "explanation": "Spring uses the Proxy pattern for @Transactional. It creates either a JDK Dynamic Proxy (for interfaces) or CGLIB proxy (for classes) that wraps your bean. When a method is called, the proxy intercepts it, begins a transaction, calls the real method, then commits or rolls back."
+    }
+  ]
+}

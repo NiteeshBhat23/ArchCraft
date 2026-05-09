@@ -1,0 +1,52 @@
+{
+  "id": "arch-cqrs-readmodels",
+  "title": "CQRS & Read Models",
+  "track": "architecture-patterns",
+  "summary": "Command Query Responsibility Segregation, building optimized read models, projections, and handling eventual consistency.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## CQRS in Brief\n\nCQRS separates the model used for **writes (Commands)** from the model used for **reads (Queries)**. This acknowledges that the data model optimized for writes (normalized, enforces invariants) is rarely optimal for reads (denormalized, join-free).\n\n```\nCommands → Write Model (domain model, normalized, consistent)\nQueries  → Read Model (denormalized, indexed for specific queries)\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "CQRS Architecture",
+      "content": "graph LR\n    Client --> CmdBus[Command Bus]\n    Client --> QueryBus[Query Bus]\n    CmdBus --> Handler[Command Handler]\n    Handler --> Domain[Domain Model]\n    Domain --> WriteDB[(Write DB\\nNormalized)]\n    Domain --> Events[Domain Events]\n    Events --> Projector[Projection Handler]\n    Projector --> ReadDB1[(Read DB 1\\nOrder Summary)]\n    Projector --> ReadDB2[(Read DB 2\\nSearch Index)]\n    Projector --> ReadDB3[(Read DB 3\\nDashboard Stats)]\n    QueryBus --> QueryHandler[Query Handler]\n    QueryHandler --> ReadDB1\n    style Domain fill:#4f46e5,color:#fff\n    style Projector fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Read Models (Projections)\n\nA projection listens to domain events and builds a read-optimized view. Each query type gets its own optimized model.\n\n```java\n@Component\npublic class OrderSummaryProjection {\n    \n    @EventHandler\n    public void on(OrderPlacedEvent event) {\n        // Build denormalized summary for the list view\n        orderSummaryRepo.save(OrderSummaryDocument.builder()\n            .orderId(event.getOrderId())\n            .customerName(event.getCustomerName()) // denormalized!\n            .itemCount(event.getItems().size())\n            .totalAmount(event.getTotal())\n            .status(\"PLACED\")\n            .placedAt(event.getOccurredAt())\n            .build());\n    }\n    \n    @EventHandler\n    public void on(OrderShippedEvent event) {\n        orderSummaryRepo.updateStatus(event.getOrderId(), \"SHIPPED\");\n        orderSummaryRepo.updateTrackingNumber(event.getOrderId(), event.getTrackingNumber());\n    }\n    \n    @EventHandler\n    public void on(OrderCancelledEvent event) {\n        orderSummaryRepo.updateStatus(event.getOrderId(), \"CANCELLED\");\n    }\n}\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Multiple Specialized Read Models\n\nOne domain, many read models — each optimized for its query:\n\n```java\n// Query 1: Order list for customer dashboard\n// Needs: orderId, date, total, status — fast list\nOrderSummaryProjection → PostgreSQL table\n\n// Query 2: Full order details page\n// Needs: everything including line items, addresses\nOrderDetailProjection → MongoDB document\n\n// Query 3: Analytics dashboard\n// Needs: aggregates, time-series\nOrderAnalyticsProjection → ClickHouse/TimescaleDB\n\n// Query 4: Search orders by product name\nOrderSearchProjection → Elasticsearch index\n```\n\nEach can use a completely different data store suited to its query type."
+    },
+    {
+      "type": "diagram",
+      "title": "Eventual Consistency in CQRS",
+      "content": "sequenceDiagram\n    participant C as Client\n    participant CS as Command Side\n    participant ES as Event Stream\n    participant RS as Read Side\n    C->>CS: PlaceOrder command\n    CS->>CS: Domain logic, save\n    CS->>ES: OrderPlaced event\n    CS-->>C: 202 Accepted {orderId}\n    Note over ES,RS: Async projection update\n    ES->>RS: OrderPlaced event processed\n    RS->>RS: Update OrderSummary table\n    C->>RS: GET /orders/{id}\n    RS-->>C: May return stale data briefly\n    Note over C: Client must handle eventual consistency"
+    },
+    {
+      "type": "markdown",
+      "content": "## Handling Eventual Consistency\n\nRead models are eventually consistent — there's a lag between writing and the read model being updated. Strategies for clients:\n\n1. **Optimistic UI** — update UI immediately assuming success, sync later\n2. **Return the command result** — return enough data with the 202 response so client doesn't need to re-query immediately\n3. **Version tracking** — client polls until read model version >= command version\n4. **Event streaming to client** — push projection updates via WebSocket/SSE\n\n```java\n// Return enough in the command response\n@PostMapping(\"/orders\")\npublic ResponseEntity<PlaceOrderResponse> placeOrder(...) {\n    OrderId id = commandBus.send(command);\n    return ResponseEntity.accepted().body(\n        PlaceOrderResponse.builder()\n            .orderId(id)\n            .status(\"PLACED\")          // tell client without needing re-query\n            .estimatedTotal(command.getTotal())\n            .build()\n    );\n}\n```"
+    },
+    {
+      "type": "callout",
+      "variant": "info",
+      "title": "CQRS ≠ Event Sourcing",
+      "content": "CQRS and Event Sourcing are complementary but independent. You can have CQRS with a traditional write store (not event-sourced) — just separate your read and write models. Event sourcing naturally works well with CQRS because events drive projections, but CQRS alone is a simpler step you can take first."
+    },
+    {
+      "type": "quiz",
+      "question": "Why might you want multiple different read models from the same domain events?",
+      "options": [
+        "To reduce the number of domain events needed",
+        "Different query patterns need different data structures — a list view needs different data than a detail view or search index",
+        "To avoid eventual consistency in the main read model",
+        "Multiple read models allow for transactions across queries"
+      ],
+      "answer": 1,
+      "explanation": "A list view needs minimal denormalized data for fast rendering. A detail page needs complete nested data. A search feature needs a full-text index. An analytics dashboard needs aggregates. Each of these is optimally served by a different data structure. CQRS lets you build each read model independently from the same event stream."
+    }
+  ]
+}

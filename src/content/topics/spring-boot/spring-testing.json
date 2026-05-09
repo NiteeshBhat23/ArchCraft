@@ -1,0 +1,58 @@
+{
+  "id": "spring-testing",
+  "title": "Testing Strategy",
+  "track": "spring-boot",
+  "summary": "Testing pyramid, MockMvc, Testcontainers, WireMock, contract testing, and Spring Boot Test slices.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## The Testing Pyramid\n\nA balanced test suite has many unit tests, fewer integration tests, and even fewer end-to-end tests.\n\n- **Unit tests** — fast, no Spring context, test logic in isolation\n- **Integration tests** — spin up Spring context or real DB, slower\n- **E2E tests** — full stack, slowest, most brittle"
+    },
+    {
+      "type": "diagram",
+      "title": "Testing Pyramid",
+      "content": "graph BT\n    E2E[E2E Tests\\nSlow, brittle\\n~5%]\n    INT[Integration Tests\\nMedium speed\\n~20%]\n    UNIT[Unit Tests\\nFast, isolated\\n~75%]\n    UNIT --> INT --> E2E\n    style UNIT fill:#059669,color:#fff\n    style INT fill:#d97706,color:#fff\n    style E2E fill:#dc2626,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Spring Boot Test Slices\n\nTest slices load only a part of the context — much faster than full `@SpringBootTest`.\n\n```java\n// @WebMvcTest — only MVC layer (controllers, filters, security)\n@WebMvcTest(UserController.class)\nclass UserControllerTest {\n    @Autowired MockMvc mockMvc;\n    @MockBean UserService userService; // mock the service layer\n\n    @Test\n    void shouldReturn200() throws Exception {\n        when(userService.getUser(1L)).thenReturn(new User(1L, \"Alice\"));\n\n        mockMvc.perform(get(\"/api/users/1\"))\n            .andExpect(status().isOk())\n            .andExpect(jsonPath(\"$.name\").value(\"Alice\"));\n    }\n}\n\n// @DataJpaTest — only JPA layer (repositories)\n@DataJpaTest\nclass UserRepoTest {\n    @Autowired UserRepository repo;\n    // Uses embedded H2 by default\n}\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Testcontainers\n\nTestcontainers spins up real Docker containers for tests — real PostgreSQL, Redis, Kafka instead of mocks.\n\n```java\n@SpringBootTest\n@Testcontainers\nclass OrderServiceIntegrationTest {\n\n    @Container\n    static PostgreSQLContainer<?> postgres = \n        new PostgreSQLContainer<>(\"postgres:15\")\n            .withDatabaseName(\"testdb\");\n\n    @DynamicPropertySource\n    static void configureProperties(DynamicPropertyRegistry registry) {\n        registry.add(\"spring.datasource.url\", postgres::getJdbcUrl);\n        registry.add(\"spring.datasource.username\", postgres::getUsername);\n        registry.add(\"spring.datasource.password\", postgres::getPassword);\n    }\n\n    @Autowired OrderService orderService;\n\n    @Test\n    void shouldPersistOrder() {\n        Order order = orderService.createOrder(new OrderRequest(...));\n        assertThat(order.getId()).isNotNull();\n    }\n}\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "Testcontainers Lifecycle",
+      "content": "sequenceDiagram\n    participant JUnit\n    participant TC as Testcontainers\n    participant Docker\n    participant Test\n    JUnit->>TC: @Container annotation found\n    TC->>Docker: docker pull postgres:15\n    Docker-->>TC: image ready\n    TC->>Docker: docker run postgres\n    Docker-->>TC: container started, port mapped\n    TC->>JUnit: @DynamicPropertySource sets URLs\n    JUnit->>Test: run test methods\n    Test-->>JUnit: tests complete\n    JUnit->>Docker: stop + remove container"
+    },
+    {
+      "type": "markdown",
+      "content": "## WireMock — Stubbing HTTP Dependencies\n\n```java\n@SpringBootTest\n@AutoConfigureWireMock(port = 0) // random port\nclass PaymentClientTest {\n\n    @Autowired PaymentClient paymentClient;\n\n    @Test\n    void shouldHandlePaymentSuccess() {\n        stubFor(post(urlEqualTo(\"/payments\"))\n            .willReturn(aResponse()\n                .withStatus(200)\n                .withHeader(\"Content-Type\", \"application/json\")\n                .withBody(\"\"\"{ \"status\": \"SUCCESS\", \"id\": \"tx-123\" }\"\"\")));\n\n        PaymentResult result = paymentClient.charge(new ChargeRequest(...));\n        assertThat(result.getStatus()).isEqualTo(\"SUCCESS\");\n    }\n}\n```"
+    },
+    {
+      "type": "comparison",
+      "title": "Test Slice Comparison",
+      "columns": ["Annotation", "Loads", "Use For"],
+      "rows": [
+        { "Annotation": "@WebMvcTest", "Loads": "MVC layer only", "Use For": "Controller logic, security, validation" },
+        { "Annotation": "@DataJpaTest", "Loads": "JPA layer only", "Use For": "Repository queries, entity mappings" },
+        { "Annotation": "@JsonTest", "Loads": "JSON serialization", "Use For": "Jackson serialization/deserialization" },
+        { "Annotation": "@WebFluxTest", "Loads": "WebFlux layer only", "Use For": "Reactive controllers" },
+        { "Annotation": "@SpringBootTest", "Loads": "Full context", "Use For": "Integration tests" }
+      ]
+    },
+    {
+      "type": "quiz",
+      "question": "What is the main advantage of Testcontainers over H2 in-memory database for integration tests?",
+      "options": [
+        "Testcontainers tests run faster than H2",
+        "Testcontainers uses the real database engine (e.g. PostgreSQL), catching DB-specific bugs H2 wouldn't",
+        "H2 doesn't support SQL",
+        "Testcontainers requires less configuration"
+      ],
+      "answer": 1,
+      "explanation": "H2 has SQL dialect differences from PostgreSQL/MySQL — queries that work on H2 may fail in production. Testcontainers uses the actual database Docker image, so tests catch database-specific issues like JSON operators, custom functions, or constraint behaviors that H2 handles differently."
+    }
+  ]
+}

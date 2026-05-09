@@ -1,0 +1,60 @@
+{
+  "id": "ds-service-mesh",
+  "title": "Service Mesh",
+  "track": "distributed-systems",
+  "summary": "Istio architecture, sidecar proxy pattern, mTLS, traffic management, observability, and when to use a service mesh.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## What is a Service Mesh?\n\nA service mesh is an infrastructure layer that handles service-to-service communication. Instead of implementing cross-cutting concerns (retries, timeouts, mTLS, circuit breaking, tracing) in every service, the mesh handles them **transparently via sidecar proxies**.\n\nThe key insight: move networking concerns out of application code into the platform."
+    },
+    {
+      "type": "diagram",
+      "title": "Service Mesh Architecture (Istio)",
+      "content": "graph TB\n    subgraph Control Plane\n        Istiod[Istiod\\nConfig + Cert Authority]\n    end\n    subgraph Service A Pod\n        AppA[App Container]\n        EnvoyA[Envoy Sidecar]\n    end\n    subgraph Service B Pod\n        AppB[App Container]\n        EnvoyB[Envoy Sidecar]\n    end\n    Istiod -->|push config| EnvoyA\n    Istiod -->|push config| EnvoyB\n    AppA <-->|localhost| EnvoyA\n    AppB <-->|localhost| EnvoyB\n    EnvoyA <-->|mTLS| EnvoyB\n    style Istiod fill:#4f46e5,color:#fff\n    style EnvoyA fill:#059669,color:#fff\n    style EnvoyB fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Sidecar Proxy Pattern\n\nEvery service pod gets an **Envoy proxy sidecar** injected automatically (via webhook). All inbound and outbound traffic goes through the proxy — the application is unaware.\n\n```yaml\n# Istio injects this automatically into your pod\napiVersion: v1\nkind: Pod\nspec:\n  containers:\n  - name: my-service      # your app\n    image: my-service:v1\n  - name: istio-proxy     # injected by Istio\n    image: istio/proxyv2:1.20\n    # intercepts all traffic via iptables rules\n```\n\n### What Envoy handles automatically:\n- **Mutual TLS (mTLS)** — encrypt all service-to-service traffic\n- **Retries + timeouts** — configure once, applies to all services\n- **Circuit breaking** — stop cascading failures\n- **Load balancing** — L7 aware (weighted routing, locality)\n- **Observability** — automatic traces, metrics, access logs"
+    },
+    {
+      "type": "diagram",
+      "title": "mTLS — Mutual TLS Between Services",
+      "content": "graph LR\n    subgraph Without mesh\n        S1[Service A] -->|plaintext| S2[Service B]\n        Note1[Anyone on the network can read traffic]\n    end\n    subgraph With Istio mTLS\n        E1[Envoy A] -->|TLS encrypted\\ncertificate verified both ways| E2[Envoy B]\n        Note2[Identity verified\\nTraffic encrypted\\nNo code changes]\n    end\n    style E1 fill:#059669,color:#fff\n    style E2 fill:#059669,color:#fff\n    style Note1 fill:#dc2626,color:#fff\n    style Note2 fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Traffic Management\n\nIstio gives fine-grained control over traffic routing:\n\n```yaml\n# VirtualService — routing rules\napiVersion: networking.istio.io/v1alpha3\nkind: VirtualService\nmetadata:\n  name: reviews\nspec:\n  http:\n  - match:\n    - headers:\n        x-user-beta:\n          exact: \"true\"\n    route:\n    - destination:\n        host: reviews\n        subset: v2      # beta users → v2\n  - route:\n    - destination:\n        host: reviews\n        subset: v1      # everyone else → v1\n        weight: 90\n    - destination:\n        host: reviews\n        subset: v3\n        weight: 10      # 10% canary to v3\n```\n\nThis enables: **canary deployments**, **A/B testing**, **blue-green**, **fault injection**, **traffic mirroring**."
+    },
+    {
+      "type": "comparison",
+      "title": "Without vs With Service Mesh",
+      "columns": ["Concern", "Without Mesh (in-code)", "With Service Mesh (sidecar)"],
+      "rows": [
+        { "Concern": "mTLS encryption", "Without Mesh (in-code)": "Each service implements", "With Service Mesh (sidecar)": "Automatic, transparent" },
+        { "Concern": "Retries/timeouts", "Without Mesh (in-code)": "Each service configures", "With Service Mesh (sidecar)": "Centrally configured" },
+        { "Concern": "Distributed tracing", "Without Mesh (in-code)": "Manual instrumentation", "With Service Mesh (sidecar)": "Automatic header propagation" },
+        { "Concern": "Traffic splitting", "Without Mesh (in-code)": "Code or LB rules", "With Service Mesh (sidecar)": "VirtualService YAML" },
+        { "Concern": "Circuit breaking", "Without Mesh (in-code)": "Resilience4j in each service", "With Service Mesh (sidecar)": "DestinationRule YAML" }
+      ]
+    },
+    {
+      "type": "callout",
+      "variant": "warning",
+      "title": "Service mesh adds complexity",
+      "content": "A service mesh is powerful but adds significant operational overhead: more components to monitor, debug, and upgrade. Start without a mesh. Add one when you have 10+ services and the cross-cutting concerns (mTLS, retries, observability) are becoming a repeated per-service burden."
+    },
+    {
+      "type": "quiz",
+      "question": "What is the primary role of the sidecar proxy in a service mesh?",
+      "options": [
+        "It replaces the application container with a more efficient version",
+        "It intercepts all network traffic to/from the application and applies cross-cutting concerns like mTLS, retries, and observability",
+        "It stores service configuration in a distributed cache",
+        "It monitors application health and restarts it if it crashes"
+      ],
+      "answer": 1,
+      "explanation": "The sidecar proxy (Envoy in Istio) is injected alongside the application container and intercepts all inbound/outbound traffic via iptables rules. The application is unaware of it. The proxy handles mTLS encryption, retries, timeouts, circuit breaking, and automatically generates distributed traces — without any code changes."
+    }
+  ]
+}

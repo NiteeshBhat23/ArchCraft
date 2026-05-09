@@ -1,0 +1,52 @@
+{
+  "id": "arch-monolith-migration",
+  "title": "Monolith to Microservices",
+  "track": "architecture-patterns",
+  "summary": "Strangler Fig pattern, Branch by Abstraction, data migration strategies, and how to safely decompose a monolith.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## Why Migrate — and Why It's Hard\n\nMonoliths are not inherently bad. They become painful when:\n- Deployments are risky (large blast radius)\n- Teams step on each other's code\n- One module's performance affects the whole app\n- You need to scale specific capabilities independently\n\nMigrating to microservices is risky. The **Strangler Fig** pattern is the safest approach — you incrementally replace the monolith rather than doing a big-bang rewrite."
+    },
+    {
+      "type": "diagram",
+      "title": "Strangler Fig Pattern",
+      "content": "graph LR\n    subgraph Phase 1 - Intercept\n        C[Client] --> P[Proxy/Gateway]\n        P -->|all traffic| M[Monolith]\n    end\n    subgraph Phase 2 - Extract\n        C2[Client] --> P2[Proxy/Gateway]\n        P2 -->|/orders/*| OS[New Order Service]\n        P2 -->|all other| M2[Monolith]\n    end\n    subgraph Phase 3 - Strangle\n        C3[Client] --> P3[Proxy/Gateway]\n        P3 -->|/orders/*| OS3[Order Service]\n        P3 -->|/payments/*| PS3[Payment Service]\n        P3 -->|remaining| M3[Shrinking Monolith]\n    end\n    style OS fill:#059669,color:#fff\n    style M3 fill:#6b7280,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Strangler Fig Step by Step\n\n1. **Insert a proxy** in front of the monolith — all traffic flows through it\n2. **Identify** a bounded context to extract (choose one that is relatively self-contained)\n3. **Build** the new service alongside the monolith, don't touch existing monolith code\n4. **Route** traffic for that capability to the new service via the proxy\n5. **Remove** the old code from the monolith (now dead)\n6. Repeat for the next capability\n\n### Good first extractions:\n- **Leaf services** — few upstream dependencies (email, PDF generation)\n- **High-value capabilities** — worth the effort (payment processing)\n- **Independent scalability** — image processing, search indexing"
+    },
+    {
+      "type": "markdown",
+      "content": "## Branch by Abstraction\n\nUsed when you can't do a clean slice extraction — for refactoring within a monolith first:\n\n1. Create an **abstraction (interface)** over the code you want to replace\n2. Have all call sites use the abstraction\n3. Build the **new implementation** alongside the old\n4. **Toggle** between old/new (feature flag)\n5. Once proven, delete the old implementation and the toggle\n\n```java\n// Step 1: Extract interface\npublic interface PaymentProcessor {\n    PaymentResult charge(ChargeRequest req);\n}\n\n// Step 2: Wrap existing code\npublic class LegacyPaymentProcessor implements PaymentProcessor { ... }\n\n// Step 3: New implementation\npublic class StripePaymentProcessor implements PaymentProcessor { ... }\n\n// Step 4: Toggle via feature flag\n@Bean\npublic PaymentProcessor paymentProcessor(\n        @Value(\"${feature.stripe-payment}\") boolean useStripe) {\n    return useStripe \n        ? new StripePaymentProcessor()\n        : new LegacyPaymentProcessor();\n}\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "Data Migration Strategy",
+      "content": "graph TD\n    Phase1[Phase 1: Shared Database\\nNew service reads/writes same DB] --> Phase2\n    Phase2[Phase 2: Database per Service\\nDual-write period — write to both DBs] --> Phase3\n    Phase3[Phase 3: Migration Complete\\nNew service owns its DB\\nMonolith reads via service API]\n    Note1[Easiest — no data migration\\nTight coupling still exists]\n    Note2[Transitional — sync data\\nEventually consistent]\n    Note3[Target — fully decoupled]\n    Phase1 --- Note1\n    Phase2 --- Note2\n    Phase3 --- Note3\n    style Phase3 fill:#059669,color:#fff\n    style Phase1 fill:#dc2626,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Data Migration Strategies\n\n### Phase 1: Shared Database (short-term)\nBoth the monolith and new service use the same database. Fast to start but maintains tight coupling.\n\n### Phase 2: Dual Write\nDuring migration, write to both the old schema and the new service's database. Backfill historical data.\n\n```java\n// Dual-write during migration\npublic void createOrder(Order order) {\n    // Write to monolith DB\n    legacyOrderRepo.save(toJpaEntity(order));\n    \n    // Also write to new service (via API or direct)\n    try {\n        orderServiceClient.create(order);\n    } catch (Exception e) {\n        log.warn(\"Failed to sync to new service — will retry via change data capture\");\n    }\n}\n```\n\n### Phase 3: Change Data Capture (CDC)\nUse tools like **Debezium** to stream DB changes from the old table to the new service as events — zero downtime, eventual consistency."
+    },
+    {
+      "type": "callout",
+      "variant": "warning",
+      "title": "Don't break the database apart prematurely",
+      "content": "The shared database is a temporary state, not a permanent anti-pattern during migration. It's better to move the API boundary first, then the data. Breaking the DB too early forces you to handle distributed transactions before you have the infrastructure to do it safely."
+    },
+    {
+      "type": "quiz",
+      "question": "What is the key advantage of the Strangler Fig pattern over a big-bang rewrite?",
+      "options": [
+        "It is faster than a big-bang rewrite",
+        "The new system is built incrementally alongside the monolith — you can stop at any point, and the monolith handles traffic until each piece is proven",
+        "It avoids the need for a proxy layer",
+        "It doesn't require any data migration"
+      ],
+      "answer": 1,
+      "explanation": "The Strangler Fig incrementally replaces the monolith while it keeps running. At any point, only the extracted capabilities are in the new service — if something goes wrong, you reroute back to the monolith. Big-bang rewrites have a dangerous 'nothing works until everything is done' period and a high probability of never completing."
+    }
+  ]
+}

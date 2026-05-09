@@ -1,0 +1,59 @@
+{
+  "id": "pe-iac",
+  "title": "Infrastructure as Code",
+  "track": "platform-engineering",
+  "summary": "Terraform fundamentals, state management, modules, Helm for Kubernetes, and IaC best practices at scale.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## Infrastructure as Code Principles\n\nIaC manages infrastructure through machine-readable configuration files — making infrastructure versioned, repeatable, and auditable. Key tools:\n\n- **Terraform** — cloud-agnostic, declarative, HCL language\n- **Pulumi** — IaC with real programming languages (Java, TypeScript)\n- **AWS CDK** — AWS-specific, real programming languages\n- **Crossplane** — Kubernetes-native IaC using CRDs\n- **Helm** — Kubernetes application packaging"
+    },
+    {
+      "type": "diagram",
+      "title": "Terraform Workflow",
+      "content": "graph LR\n    Write[Write .tf files] -->|terraform init| Init[Download providers]\n    Init -->|terraform plan| Plan[Preview changes]\n    Plan -->|review| Review{Approved?}\n    Review -->|yes terraform apply| Apply[Provision infra]\n    Review -->|no| Write\n    Apply --> State[Update tfstate]\n    State --> Real[Real Infrastructure]\n    style Apply fill:#059669,color:#fff\n    style Plan fill:#4f46e5,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Terraform Modules\n\nModules are reusable, composable infrastructure components:\n\n```hcl\n# modules/spring-boot-service/main.tf\n# Reusable module for deploying a Spring Boot service\nvariable \"service_name\" { type = string }\nvariable \"image\" { type = string }\nvariable \"replicas\" { default = 2 }\nvariable \"memory_limit\" { default = \"512Mi\" }\n\nresource \"kubernetes_deployment\" \"app\" {\n  metadata { name = var.service_name }\n  spec {\n    replicas = var.replicas\n    template {\n      spec {\n        container {\n          name  = var.service_name\n          image = var.image\n          resources {\n            limits   = { memory = var.memory_limit }\n            requests = { memory = \"256Mi\" }\n          }\n        }\n      }\n    }\n  }\n}\n\n# Usage — consume the module\nmodule \"order_service\" {\n  source       = \"./modules/spring-boot-service\"\n  service_name = \"order-service\"\n  image        = \"registry/order-service:1.2.0\"\n  replicas     = 3\n}\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Remote State and Workspaces\n\n```hcl\n# Remote state — shared, locked, encrypted\nterraform {\n  backend \"s3\" {\n    bucket         = \"my-terraform-state\"\n    key            = \"${var.environment}/eks/terraform.tfstate\"\n    region         = \"us-east-1\"\n    encrypt        = true\n    dynamodb_table = \"terraform-locks\"\n  }\n}\n\n# Workspaces for environment isolation\n# terraform workspace new prod\n# terraform workspace select prod\nlocals {\n  env_config = {\n    dev  = { instance_type = \"t3.small\",  min_nodes = 1 }\n    prod = { instance_type = \"m5.xlarge\", min_nodes = 3 }\n  }\n  config = local.env_config[terraform.workspace]\n}\n\nresource \"aws_eks_node_group\" \"main\" {\n  instance_types = [local.config.instance_type]\n  scaling_config {\n    min_size = local.config.min_nodes\n  }\n}\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Helm Charts Best Practices\n\n```\nchart/\n  Chart.yaml         # version, dependencies\n  values.yaml        # safe defaults\n  values-prod.yaml   # production overrides\n  templates/\n    _helpers.tpl     # reusable template helpers\n    deployment.yaml\n    service.yaml\n    ingress.yaml\n    hpa.yaml\n    configmap.yaml\n    NOTES.txt        # post-install instructions\n```\n\n```yaml\n# _helpers.tpl — define reusable labels\n{{- define \"app.labels\" -}}\napp.kubernetes.io/name: {{ .Chart.Name }}\napp.kubernetes.io/version: {{ .Chart.AppVersion }}\napp.kubernetes.io/managed-by: Helm\n{{- end }}\n\n# deployment.yaml — use the helper\nmetadata:\n  labels:\n    {{- include \"app.labels\" . | nindent 4 }}\n```\n\n```bash\n# Deploy with overrides\nhelm upgrade --install order-service ./charts/order-service \\\n  --namespace production \\\n  --create-namespace \\\n  --values values-prod.yaml \\\n  --set image.tag=$GIT_SHA \\\n  --atomic             # rollback on failure\n  --timeout 5m\n```"
+    },
+    {
+      "type": "comparison",
+      "title": "IaC Tool Comparison",
+      "columns": ["Tool", "Language", "State", "Best For"],
+      "rows": [
+        { "Tool": "Terraform", "Language": "HCL (declarative)", "State": "tfstate file", "Best For": "Multi-cloud, large orgs" },
+        { "Tool": "Pulumi", "Language": "Java/TS/Python/Go", "State": "Pulumi Cloud / S3", "Best For": "Developers who prefer real languages" },
+        { "Tool": "AWS CDK", "Language": "Java/TS/Python", "State": "CloudFormation", "Best For": "AWS-only shops" },
+        { "Tool": "Crossplane", "Language": "Kubernetes CRDs", "State": "Kubernetes etcd", "Best For": "K8s-native IaC" },
+        { "Tool": "Helm", "Language": "Go templates + YAML", "State": "Kubernetes secrets", "Best For": "Kubernetes app packaging" }
+      ]
+    },
+    {
+      "type": "callout",
+      "variant": "danger",
+      "title": "Never store Terraform state in Git",
+      "content": "Terraform state contains sensitive values (passwords, private keys). Use remote backends (S3 + DynamoDB for locking). Add terraform.tfstate and *.tfstate.backup to .gitignore immediately."
+    },
+    {
+      "type": "quiz",
+      "question": "What is the purpose of a Terraform module?",
+      "options": [
+        "To split large Terraform files into smaller ones for readability",
+        "To create reusable, composable infrastructure components that enforce standards and can be shared across teams",
+        "To manage Terraform state in multiple environments",
+        "To import existing infrastructure into Terraform management"
+      ],
+      "answer": 1,
+      "explanation": "Terraform modules package infrastructure patterns into reusable components. A platform team creates a 'spring-boot-service' module that includes a Deployment, Service, HPA, and Ingress with all best practices built in. Application teams consume it with just a few parameters. Changes to the module propagate to all consumers, ensuring consistent standards."
+    }
+  ]
+}

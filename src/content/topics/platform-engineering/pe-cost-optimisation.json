@@ -1,0 +1,60 @@
+{
+  "id": "pe-cost-optimisation",
+  "title": "Cost Optimisation at Scale",
+  "track": "platform-engineering",
+  "summary": "FinOps principles, right-sizing, Spot/Preemptible instances, cost observability, and team-level cloud cost accountability.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## FinOps — Financial Operations\n\nFinOps is a cultural practice that brings financial accountability to cloud spending. It unites engineering, finance, and business to make data-driven spending decisions.\n\n**Three phases:**\n1. **Inform** — visibility into who spends what\n2. **Optimize** — reduce waste and improve efficiency\n3. **Operate** — continuous optimization as a team habit"
+    },
+    {
+      "type": "diagram",
+      "title": "Cloud Cost Waste Sources",
+      "content": "graph TD\n    Waste[Cloud Cost Waste] --> Idle[Idle Resources\\nOver-provisioned VMs]\n    Waste --> Oversize[Over-sized Instances\\nXL when M would work]\n    Waste --> Storage[Forgotten Storage\\nOld snapshots, unused volumes]\n    Waste --> Transfer[Data Transfer\\nCross-region, egress fees]\n    Waste --> License[Unused Licenses\\nPaid tiers not needed]\n    Idle --> Fix1[Right-size + scale-to-zero]\n    Oversize --> Fix2[VPA + benchmarking]\n    Storage --> Fix3[Lifecycle policies]\n    style Waste fill:#dc2626,color:#fff\n    style Fix1 fill:#059669,color:#fff\n    style Fix2 fill:#059669,color:#fff\n    style Fix3 fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Right-Sizing Kubernetes Workloads\n\nOver-provisioned resource requests waste cluster capacity and cost money:\n\n```bash\n# Check actual usage vs requests\nkubectl top pods -n production --sort-by=memory\n\n# NAME                    CPU(cores)   MEMORY(bytes)\n# order-service-abc123    48m          127Mi\n# order-service-def456    52m          134Mi\n\n# But the Deployment requests:\n# cpu: 500m, memory: 512Mi  ← 10x over-provisioned!\n```\n\n### Vertical Pod Autoscaler (VPA)\nAutomatically recommends and applies optimal resource requests:\n\n```yaml\napiVersion: autoscaling.k8s.io/v1\nkind: VerticalPodAutoscaler\nmetadata:\n  name: order-service-vpa\nspec:\n  targetRef:\n    apiVersion: apps/v1\n    kind: Deployment\n    name: order-service\n  updatePolicy:\n    updateMode: \"Auto\"   # or \"Off\" for recommendations only\n  resourcePolicy:\n    containerPolicies:\n    - containerName: order-service\n      minAllowed:\n        memory: 128Mi\n      maxAllowed:\n        memory: 1Gi\n```\n\n**Result:** VPA continuously observes actual usage and adjusts requests — no manual tuning needed."
+    },
+    {
+      "type": "markdown",
+      "content": "## Spot/Preemptible Instances\n\nSpot instances (AWS) / Preemptible VMs (GCP) offer 60–80% discount over on-demand pricing. The trade-off: they can be terminated with 2 minutes notice.\n\n### What workloads suit Spot:\n- Batch processing jobs\n- CI/CD workers\n- Development and staging environments\n- Stateless microservices with fast recovery\n\n### Kubernetes node pools strategy:\n```yaml\n# On-demand pool — critical, stateful workloads\nnodePool:\n  name: on-demand\n  instanceType: m5.xlarge\n  labels:\n    node-type: on-demand\n\n# Spot pool — stateless, fault-tolerant workloads\nnodePool:\n  name: spot\n  instanceType: m5.xlarge\n  spot: true\n  labels:\n    node-type: spot\n\n# Deployment — prefer spot, fall back to on-demand\nspec:\n  affinity:\n    nodeAffinity:\n      preferredDuringSchedulingIgnoredDuringExecution:\n      - weight: 90\n        preference:\n          matchExpressions:\n          - key: node-type\n            operator: In\n            values: [spot]\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Cost Observability\n\n### Tag everything for cost allocation:\n```hcl\n# Terraform — enforce tagging\nresource \"aws_instance\" \"app\" {\n  tags = {\n    Team        = \"platform\"\n    Service     = \"order-service\"\n    Environment = var.environment\n    CostCenter  = \"engineering\"\n    # → Enables per-team, per-service cost breakdown\n  }\n}\n```\n\n### Kubernetes cost allocation with OpenCost:\n```bash\n# Install OpenCost\nhelm install opencost opencost/opencost -n opencost\n\n# Query: cost per namespace last 7 days\ncurl http://opencost:9090/allocation?window=7d&aggregate=namespace\n\n# Result:\n# production:    $2,340/week\n# development:   $890/week  ← dev is 38% of prod cost!\n# staging:       $420/week\n```\n\n### Cost optimization checklist:\n```\n□ VPA recommendations reviewed monthly\n□ Idle services (< 1 req/day) scaled to zero\n□ Dev/staging clusters shut down nights/weekends\n□ Old container images purged from registry\n□ Storage lifecycle policies enabled (cold tier after 30 days)\n□ Reserved instances for baseline production load\n□ Per-team cost dashboards reviewed weekly\n```"
+    },
+    {
+      "type": "comparison",
+      "title": "Cost Optimisation Techniques",
+      "columns": ["Technique", "Savings Potential", "Effort", "Risk"],
+      "rows": [
+        { "Technique": "Right-sizing (VPA)", "Savings Potential": "20-40%", "Effort": "Low (automated)", "Risk": "Low" },
+        { "Technique": "Spot instances", "Savings Potential": "60-80% on eligible", "Effort": "Medium", "Risk": "Medium (preemption)" },
+        { "Technique": "Reserved instances", "Savings Potential": "30-60%", "Effort": "Low", "Risk": "Low (commitment)" },
+        { "Technique": "Scale to zero (KEDA)", "Savings Potential": "90%+ for idle", "Effort": "Medium", "Risk": "Low" },
+        { "Technique": "Dev/staging schedule", "Savings Potential": "60% of non-prod", "Effort": "Low", "Risk": "Low" },
+        { "Technique": "Storage lifecycle", "Savings Potential": "40-70% on storage", "Effort": "Low", "Risk": "Low" }
+      ]
+    },
+    {
+      "type": "callout",
+      "variant": "tip",
+      "title": "Make teams own their costs",
+      "content": "The most effective cost optimization is making engineers see the cost of their decisions in real time. Show per-team, per-service cost dashboards. Add cost estimates to PR descriptions for infra changes. When a developer can see that their poorly-tuned query costs $200/month extra, they fix it. Invisible costs are never optimized."
+    },
+    {
+      "type": "quiz",
+      "question": "Why are Spot/Preemptible instances unsuitable for stateful databases in production?",
+      "options": [
+        "They have lower network bandwidth than on-demand instances",
+        "They can be terminated with minimal notice (2 minutes), which would cause data loss or corruption for stateful services without graceful shutdown",
+        "Cloud providers don't allow spot instances for database workloads",
+        "Spot instances have higher latency due to shared infrastructure"
+      ],
+      "answer": 1,
+      "explanation": "Spot/Preemptible instances can be reclaimed by the cloud provider with only 2 minutes warning. For stateful services like databases, this means potential data loss or corruption if the instance is terminated before data is flushed to disk. Stateless services (web servers, batch jobs) can handle this — they simply restart. Databases need guaranteed uptime and should use on-demand or reserved instances."
+    }
+  ]
+}

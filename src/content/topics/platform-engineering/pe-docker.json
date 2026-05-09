@@ -1,0 +1,63 @@
+{
+  "id": "pe-docker",
+  "title": "Docker & Container Best Practices",
+  "track": "platform-engineering",
+  "summary": "Multi-stage builds, layer caching, minimal images, security scanning, and optimizing Spring Boot containers.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## Why Containers?\n\nContainers package an application with all its dependencies into a single, portable artifact that runs identically in development, staging, and production. Unlike VMs, containers share the host OS kernel — they're lightweight (MBs vs GBs) and start in milliseconds."
+    },
+    {
+      "type": "diagram",
+      "title": "VM vs Container Architecture",
+      "content": "graph TB\n    subgraph Virtual Machines\n        HW1[Hardware]\n        HW1 --> HostOS1[Host OS]\n        HostOS1 --> Hypervisor[Hypervisor]\n        Hypervisor --> GuestOS1[Guest OS 1\\n~1GB]\n        Hypervisor --> GuestOS2[Guest OS 2\\n~1GB]\n        GuestOS1 --> App1[App]\n        GuestOS2 --> App2[App]\n    end\n    subgraph Containers\n        HW2[Hardware]\n        HW2 --> HostOS2[Host OS]\n        HostOS2 --> DockerEngine[Container Runtime]\n        DockerEngine --> C1[Container 1\\n~50MB]\n        DockerEngine --> C2[Container 2\\n~50MB]\n        DockerEngine --> C3[Container 3\\n~50MB]\n    end\n    style DockerEngine fill:#4f46e5,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Optimized Spring Boot Dockerfile\n\n```dockerfile\n# Stage 1: Build\nFROM eclipse-temurin:21-jdk-alpine AS build\nWORKDIR /app\n\n# Copy pom.xml and download dependencies first (cache layer)\nCOPY pom.xml .\nRUN mvn dependency:go-offline -q\n\n# Copy source and build\nCOPY src ./src\nRUN mvn package -DskipTests -q\n\n# Stage 2: Extract Spring Boot layers\nFROM eclipse-temurin:21-jdk-alpine AS extract\nWORKDIR /app\nCOPY --from=build /app/target/*.jar app.jar\nRUN java -Djarmode=layertools -jar app.jar extract\n\n# Stage 3: Final minimal runtime image\nFROM eclipse-temurin:21-jre-alpine\nWORKDIR /app\n\n# Security: run as non-root\nRUN addgroup -S appgroup && adduser -S appuser -G appgroup\nUSER appuser\n\n# Spring Boot layer ordering: dependencies change least, app most\nCOPY --from=extract /app/dependencies/ ./\nCOPY --from=extract /app/spring-boot-loader/ ./\nCOPY --from=extract /app/snapshot-dependencies/ ./\nCOPY --from=extract /app/application/ ./\n\nEXPOSE 8080\nENTRYPOINT [\"java\", \"-XX:+UseContainerSupport\", \"-XX:MaxRAMPercentage=75\", \"org.springframework.boot.loader.launch.JarLauncher\"]\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Layer Caching\n\nDocker builds images in layers. Each instruction creates a layer. Layers are cached — only changed layers are rebuilt.\n\n**Key insight**: put things that change rarely at the top, frequently-changing things at the bottom:\n\n```dockerfile\n# BAD — source changes break dependency cache\nCOPY . .\nRUN mvn dependency:go-offline\nRUN mvn package\n\n# GOOD — dependencies cached separately from source\nCOPY pom.xml .             # ← changes rarely → cached\nRUN mvn dependency:go-offline  # ← only re-runs if pom.xml changes\nCOPY src ./src              # ← changes often\nRUN mvn package             # ← always rebuilds (fast, deps cached)\n```\n\n**With Spring Boot layers**: the `layertools` extracts the jar into:\n1. `dependencies/` — rarely changes (cache well)\n2. `spring-boot-loader/` — Spring framework (rarely changes)\n3. `snapshot-dependencies/` — SNAPSHOT deps\n4. `application/` — your code (changes most often, only layer rebuilt)"
+    },
+    {
+      "type": "diagram",
+      "title": "Spring Boot Layered Jar",
+      "content": "graph TB\n    JAR[Spring Boot Fat JAR] -->|layertools extract| L1[Layer 1: dependencies]\n    JAR --> L2[Layer 2: spring-boot-loader]\n    JAR --> L3[Layer 3: snapshot-dependencies]\n    JAR --> L4[Layer 4: application]\n    L1 -->|rebuild when pom changes| Cache1[Cached in Docker]\n    L4 -->|rebuilds on every code change| NCache[Always rebuilt]\n    style L4 fill:#dc2626,color:#fff\n    style L1 fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Container Security Best Practices\n\n1. **Run as non-root** — never run containers as root\n2. **Use minimal base images** — `eclipse-temurin:21-jre-alpine` instead of full JDK\n3. **Scan for vulnerabilities** — `docker scout cve`, Trivy, Snyk\n4. **Don't bake secrets** — use environment variables or secrets manager, not ENV in Dockerfile\n5. **Read-only filesystem** — `--read-only` flag; only mount writable volumes where needed\n6. **Distroless images** — Google's distroless: no shell, minimal attack surface\n\n```bash\n# Scan with Trivy\ntrivy image registry/order-service:1.2.0\n\n# Run with security options\ndocker run \\\n  --read-only \\\n  --tmpfs /tmp \\\n  --security-opt no-new-privileges \\\n  --user 1001:1001 \\\n  order-service:1.2.0\n```"
+    },
+    {
+      "type": "comparison",
+      "title": "Base Image Comparison for Java",
+      "columns": ["Image", "Size", "Shell?", "Security", "Use For"],
+      "rows": [
+        { "Image": "eclipse-temurin:21-jdk", "Size": "~400MB", "Shell?": "Yes", "Security": "Low", "Use For": "Build stage only" },
+        { "Image": "eclipse-temurin:21-jre-alpine", "Size": "~200MB", "Shell?": "Yes (sh)", "Security": "Medium", "Use For": "Runtime (common)" },
+        { "Image": "gcr.io/distroless/java21", "Size": "~120MB", "Shell?": "No", "Security": "High", "Use For": "Production (hardened)" },
+        { "Image": "eclipse-temurin:21-jre", "Size": "~250MB", "Shell?": "Yes (bash)", "Security": "Low-Med", "Use For": "Runtime (debugging)" }
+      ]
+    },
+    {
+      "type": "callout",
+      "variant": "tip",
+      "title": "Use -XX:+UseContainerSupport",
+      "content": "The JVM defaults to using machine RAM for heap sizing. In containers this causes OOMKills because it doesn't see container limits. Use -XX:+UseContainerSupport (default on Java 8u191+) and -XX:MaxRAMPercentage=75 to make the JVM respect container memory limits."
+    },
+    {
+      "type": "quiz",
+      "question": "Why should dependency downloading be in a separate Dockerfile layer from source code copying?",
+      "options": [
+        "Dependencies must be installed before source code can be compiled",
+        "So that Docker layer caching reuses the dependency layer when only source code changes — avoiding slow dependency downloads on every build",
+        "To reduce the final image size",
+        "Because Docker requires this ordering for Java applications"
+      ],
+      "answer": 1,
+      "explanation": "Docker caches each layer. If you copy pom.xml and run `mvn dependency:go-offline` as separate steps before copying source, those layers are cached. When you only change source code, Docker reuses the cached dependency layer and only re-runs compilation — turning a 3-minute build into a 30-second one."
+    }
+  ]
+}

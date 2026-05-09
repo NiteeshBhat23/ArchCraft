@@ -1,0 +1,65 @@
+{
+  "id": "spring-data-jpa",
+  "title": "Spring Data JPA Deep Dive",
+  "track": "spring-boot",
+  "summary": "N+1 problem, fetch strategies, JPQL vs Criteria API, projections, specifications, and JPA performance tuning.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## The N+1 Problem\n\nThe most common JPA performance killer. When you load N entities and then access a lazy collection on each one, JPA fires N additional queries.\n\n```java\n// N+1 in action\nList<Author> authors = authorRepo.findAll(); // 1 query\nfor (Author a : authors) {\n    a.getBooks().size(); // N queries — one per author!\n}\n// Total: 1 + N queries for N authors\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "N+1 Query Problem",
+      "content": "sequenceDiagram\n    participant App\n    participant DB\n    App->>DB: SELECT * FROM author (1 query)\n    DB-->>App: [Author1, Author2, Author3...AuthorN]\n    App->>DB: SELECT * FROM book WHERE author_id=1\n    App->>DB: SELECT * FROM book WHERE author_id=2\n    App->>DB: SELECT * FROM book WHERE author_id=3\n    Note over App,DB: N more queries!\n    App->>DB: SELECT * FROM book WHERE author_id=N\n    Note over DB: Total: 1 + N queries"
+    },
+    {
+      "type": "markdown",
+      "content": "## Fixing N+1: Fetch Strategies\n\n### JOIN FETCH (JPQL)\n```java\n@Query(\"SELECT a FROM Author a JOIN FETCH a.books WHERE a.active = true\")\nList<Author> findAllWithBooks();\n// Produces: SELECT a.*, b.* FROM author a JOIN book b ON ... — 1 query\n```\n\n### @EntityGraph\n```java\n@EntityGraph(attributePaths = {\"books\", \"books.reviews\"})\nList<Author> findByActiveTrue();\n// Eagerly loads books and their reviews in 1 query\n```\n\n### Batch Fetching (Hibernate)\n```java\n@Entity\npublic class Author {\n    @OneToMany\n    @BatchSize(size = 50) // loads books for 50 authors at a time\n    private List<Book> books;\n}\n// Reduces N queries to N/50 queries\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "Fetch Strategy Comparison",
+      "content": "graph LR\n    subgraph LAZY default\n        L1[Load Authors] -->|N separate queries| L2[Load Books one-by-one]\n    end\n    subgraph JOIN FETCH\n        J1[One JOIN query] --> J2[All data loaded]\n    end\n    subgraph BATCH SIZE 50\n        B1[Load Authors] --> B2[Load Books in batches of 50]\n    end\n    style J2 fill:#059669,color:#fff\n    style L2 fill:#dc2626,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Projections\n\nAvoid loading full entities when you only need a few fields.\n\n### Interface Projection\n```java\npublic interface AuthorSummary {\n    String getName();\n    String getEmail();\n    // Automatically mapped — no @Entity loading overhead\n}\n\nList<AuthorSummary> findByActiveTrue();\n// SELECT a.name, a.email FROM author — not SELECT *\n```\n\n### DTO Projection with JPQL\n```java\n@Query(\"SELECT new com.example.AuthorDto(a.name, a.email) FROM Author a\")\nList<AuthorDto> findAllSummaries();\n```\n\n### Spring Data Projections with @Value (SpEL)\n```java\npublic interface FullName {\n    @Value(\"#{target.firstName + ' ' + target.lastName}\")\n    String getFullName();\n}\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Specifications (Dynamic Queries)\n\n```java\npublic class BookSpecs {\n    public static Specification<Book> hasAuthor(String author) {\n        return (root, query, cb) ->\n            author == null ? null :\n            cb.equal(root.get(\"author\").get(\"name\"), author);\n    }\n    \n    public static Specification<Book> publishedAfter(LocalDate date) {\n        return (root, query, cb) ->\n            date == null ? null :\n            cb.greaterThan(root.get(\"publishedAt\"), date);\n    }\n}\n\n// Combine dynamically\nSpecification<Book> spec = Specification\n    .where(hasAuthor(filter.getAuthor()))\n    .and(publishedAfter(filter.getFromDate()));\n\nbookRepo.findAll(spec, pageable);\n```"
+    },
+    {
+      "type": "comparison",
+      "title": "JPA Query Approaches",
+      "columns": ["Approach", "Dynamic?", "Type-safe?", "Best For"],
+      "rows": [
+        { "Approach": "Derived method names", "Dynamic?": "No", "Type-safe?": "Yes", "Best For": "Simple queries" },
+        { "Approach": "@Query JPQL", "Dynamic?": "No", "Type-safe?": "Partial", "Best For": "Complex static queries" },
+        { "Approach": "Specifications", "Dynamic?": "Yes", "Type-safe?": "Yes", "Best For": "Dynamic filter queries" },
+        { "Approach": "Criteria API", "Dynamic?": "Yes", "Type-safe?": "Yes", "Best For": "Programmatic queries" },
+        { "Approach": "Native @Query", "Dynamic?": "No", "Type-safe?": "No", "Best For": "DB-specific SQL" },
+        { "Approach": "QueryDSL", "Dynamic?": "Yes", "Type-safe?": "Yes", "Best For": "Complex dynamic queries" }
+      ]
+    },
+    {
+      "type": "callout",
+      "variant": "tip",
+      "title": "Enable Hibernate SQL logging to spot N+1",
+      "content": "Add spring.jpa.show-sql=true and spring.jpa.properties.hibernate.format_sql=true to application.properties. If you see the same query repeated many times with different IDs, you have an N+1 problem."
+    },
+    {
+      "type": "quiz",
+      "question": "What is the most efficient way to fix N+1 when loading authors with their books for a report?",
+      "options": [
+        "Switch all @OneToMany to EAGER fetch type",
+        "Use JOIN FETCH in a JPQL query or @EntityGraph to load both in a single query",
+        "Load authors and books in separate queries and join in Java",
+        "Use @Transactional to keep the session open longer"
+      ],
+      "answer": 1,
+      "explanation": "JOIN FETCH or @EntityGraph loads all the data in a single SQL JOIN query, eliminating N+1. Switching to EAGER globally causes N+1 in other places and is worse. Joining in Java is inefficient. @Transactional with open session just enables lazy loading — it doesn't prevent N additional queries."
+    }
+  ]
+}

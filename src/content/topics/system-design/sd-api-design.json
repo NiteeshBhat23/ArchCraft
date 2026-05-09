@@ -1,0 +1,55 @@
+{
+  "id": "sd-api-design",
+  "title": "API Design",
+  "track": "system-design",
+  "summary": "REST, gRPC, GraphQL trade-offs, versioning strategies, pagination, rate limiting, and API design best practices.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## REST, gRPC, and GraphQL\n\nThree dominant API paradigms, each with distinct trade-offs:\n\n- **REST** — resource-oriented, HTTP verbs, widely understood, simple tooling\n- **gRPC** — contract-first (Protobuf), binary encoding, bi-directional streaming, high performance\n- **GraphQL** — query-first, client specifies exactly what data it needs, avoids over/under-fetching"
+    },
+    {
+      "type": "comparison",
+      "title": "REST vs gRPC vs GraphQL",
+      "columns": ["Aspect", "REST", "gRPC", "GraphQL"],
+      "rows": [
+        { "Aspect": "Protocol", "REST": "HTTP/1.1 or 2", "gRPC": "HTTP/2 (required)", "GraphQL": "HTTP/1.1 or 2" },
+        { "Aspect": "Format", "REST": "JSON (usually)", "gRPC": "Protobuf (binary)", "GraphQL": "JSON" },
+        { "Aspect": "Schema", "REST": "OpenAPI (optional)", "gRPC": "Proto files (required)", "GraphQL": "SDL (required)" },
+        { "Aspect": "Streaming", "REST": "SSE / WebSocket", "gRPC": "Native bi-directional", "GraphQL": "Subscriptions" },
+        { "Aspect": "Browser support", "REST": "Native", "gRPC": "Needs grpc-web proxy", "GraphQL": "Native" },
+        { "Aspect": "Best for", "REST": "Public APIs, CRUD", "gRPC": "Internal microservices", "GraphQL": "Mobile/flexible clients" }
+      ]
+    },
+    {
+      "type": "diagram",
+      "title": "Over-fetching vs Under-fetching: REST vs GraphQL",
+      "content": "graph TB\n    subgraph REST - Over-fetch\n        C1[Client needs\\nname + avatar] -->|GET /users/1| S1[Returns\\nname, email, address,\\nphone, preferences...]\n    end\n    subgraph GraphQL - Exact fetch\n        C2[Client needs\\nname + avatar] -->|query { user { name avatar } }| S2[Returns\\nname, avatar only]\n    end\n    style S1 fill:#dc2626,color:#fff\n    style S2 fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## REST Best Practices\n\n### Naming\n```\nGET    /users          — list users\nGET    /users/123      — get user 123\nPOST   /users          — create user\nPUT    /users/123      — replace user 123\nPATCH  /users/123      — partial update\nDELETE /users/123      — delete user\n\n# Nested resources\nGET  /users/123/orders       — orders for user 123\nPOST /users/123/orders       — create order for user 123\n```\n\n### Status Codes\n```\n200 OK          — success with body\n201 Created     — resource created (include Location header)\n204 No Content  — success, no body\n400 Bad Request — invalid input\n401 Unauthorized — auth required\n403 Forbidden   — authenticated but no permission\n404 Not Found   — resource doesn't exist\n409 Conflict    — optimistic lock failure, duplicate\n422 Unprocessable — validation error\n429 Too Many Requests — rate limited\n500 Internal Server Error — unexpected server error\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## API Versioning Strategies\n\n| Strategy | Example | Pros | Cons |\n|---|---|---|---|\n| **URI path** | `/api/v1/users` | Visible, cacheable | URL changes |\n| **Query param** | `/users?version=1` | Flexible | Less clean |\n| **Header** | `Accept: application/vnd.api.v1+json` | Clean URLs | Less discoverable |\n| **Subdomain** | `v1.api.example.com` | Isolatable | DNS overhead |\n\n**Recommendation**: URI path versioning for public APIs (most explicit and cacheable).\n\n## Pagination\n\n### Offset pagination (simple, has issues)\n```\nGET /users?page=2&pageSize=20\n// Issues: items shift if data changes between pages\n```\n\n### Cursor-based (preferred for large/live data)\n```\nGET /posts?cursor=eyJpZCI6MTAwfQ&limit=20\n// Response: { data: [...], nextCursor: \"eyJpZCI6MTIwfQ\" }\n// Stable even if rows inserted/deleted\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "gRPC Communication Patterns",
+      "content": "graph LR\n    subgraph Unary\n        C1[Client] -->|request| S1[Server]\n        S1 -->|response| C1\n    end\n    subgraph Server Streaming\n        C2[Client] -->|request| S2[Server]\n        S2 -->|stream...| C2\n    end\n    subgraph Bi-directional Streaming\n        C3[Client] <-->|stream both ways| S3[Server]\n    end\n    style C3 fill:#4f46e5,color:#fff\n    style S3 fill:#4f46e5,color:#fff"
+    },
+    {
+      "type": "quiz",
+      "question": "What problem does GraphQL primarily solve that REST has?",
+      "options": [
+        "REST doesn't support authentication",
+        "REST over-fetches (too much data) or under-fetches (multiple requests needed) because endpoints return fixed shapes",
+        "REST doesn't support real-time updates",
+        "REST APIs are slower than GraphQL"
+      ],
+      "answer": 1,
+      "explanation": "REST endpoints return fixed data shapes. Clients either get too much data (over-fetching, wasting bandwidth) or must make multiple requests to get related data (under-fetching). GraphQL lets clients specify exactly what fields they need in a single request, solving both problems."
+    }
+  ]
+}

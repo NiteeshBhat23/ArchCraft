@@ -1,0 +1,57 @@
+{
+  "id": "pe-cicd",
+  "title": "CI/CD Pipelines",
+  "track": "platform-engineering",
+  "summary": "Pipeline design, GitHub Actions, deployment strategies (blue-green, canary), GitOps with ArgoCD.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## CI/CD Fundamentals\n\n- **Continuous Integration (CI)** — every code push triggers automated build + tests. Catch bugs early, keep main branch deployable.\n- **Continuous Delivery (CD)** — every green build produces a deployable artifact. Deployment to production is a manual trigger.\n- **Continuous Deployment** — every green build is automatically deployed to production. No manual gate.\n\nThe goal: **reduce the cost and risk of deployment** so you can deploy frequently and confidently."
+    },
+    {
+      "type": "diagram",
+      "title": "CI/CD Pipeline Stages",
+      "content": "graph LR\n    Commit[Git Push] --> Build[Build\\nmvn package]\n    Build --> Test[Unit Tests\\nmvn test]\n    Test --> Analyze[Static Analysis\\nSonarQube]\n    Analyze --> IntTest[Integration Tests\\nTestcontainers]\n    IntTest --> Docker[Build Docker Image]\n    Docker --> Scan[Security Scan\\nTrivy]\n    Scan --> Push[Push to Registry]\n    Push --> DeployStaging[Deploy to Staging]\n    DeployStaging --> E2E[E2E Tests]\n    E2E -->|manual gate| DeployProd[Deploy to Production]\n    style Commit fill:#4f46e5,color:#fff\n    style DeployProd fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## GitHub Actions — Spring Boot Pipeline\n\n```yaml\n# .github/workflows/ci.yml\nname: CI/CD Pipeline\n\non:\n  push:\n    branches: [main, develop]\n  pull_request:\n    branches: [main]\n\njobs:\n  build-and-test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      \n      - name: Set up JDK 21\n        uses: actions/setup-java@v4\n        with:\n          java-version: '21'\n          distribution: 'temurin'\n          cache: maven\n      \n      - name: Build and Test\n        run: mvn verify\n      \n      - name: Upload test results\n        uses: actions/upload-artifact@v4\n        with:\n          name: test-results\n          path: target/surefire-reports/\n\n  build-image:\n    needs: build-and-test\n    if: github.ref == 'refs/heads/main'\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      \n      - name: Build Docker image\n        run: |\n          docker build -t $IMAGE_NAME:$GITHUB_SHA .\n          docker tag $IMAGE_NAME:$GITHUB_SHA $IMAGE_NAME:latest\n      \n      - name: Trivy vulnerability scan\n        uses: aquasecurity/trivy-action@master\n        with:\n          image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}\n          exit-code: '1'\n          severity: 'CRITICAL'\n      \n      - name: Push to registry\n        run: docker push $IMAGE_NAME:$GITHUB_SHA\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Deployment Strategies\n\n### Blue-Green Deployment\nRun two identical production environments. Switch traffic from Blue (current) to Green (new) atomically.\n\n```\nBlue (v1) ← traffic    Green (v2) idle\n          [deploy + test Green]\nBlue (v1) idle          Green (v2) ← traffic\n          [keep Blue for quick rollback]\n```\n\n✓ Zero downtime, instant rollback  \n✗ 2x infrastructure cost during transition\n\n### Canary Deployment\nGradually shift traffic to new version:\n\n```\n5% → v2 (watch metrics for 10 min)\n20% → v2 (watch metrics for 20 min)\n50% → v2 (watch metrics for 30 min)\n100% → v2 (decommission v1)\n```\n\n✓ Low blast radius, data-driven rollout  \n✗ Must handle multiple versions simultaneously"
+    },
+    {
+      "type": "diagram",
+      "title": "Canary Deployment Traffic Shift",
+      "content": "graph LR\n    LB[Load Balancer] -->|95%| V1[Service v1\\n10 pods]\n    LB -->|5%| V2[Service v2\\n1 pod canary]\n    Monitor[Prometheus/Grafana\\nWatch error rate, latency]\n    V2 --> Monitor\n    Monitor -->|metrics OK| Scale[Scale canary to 50%]\n    Monitor -->|metrics BAD| Rollback[Rollback: 0% to v2]\n    style V2 fill:#059669,color:#fff\n    style Rollback fill:#dc2626,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## GitOps with ArgoCD\n\nGitOps treats Git as the single source of truth for infrastructure and application state. ArgoCD continuously reconciles the cluster state with what's in Git.\n\n```yaml\n# ArgoCD Application manifest\napiVersion: argoproj.io/v1alpha1\nkind: Application\nmetadata:\n  name: order-service\nspec:\n  source:\n    repoURL: https://github.com/org/k8s-manifests\n    targetRevision: HEAD\n    path: services/order-service/production\n  destination:\n    server: https://kubernetes.default.svc\n    namespace: production\n  syncPolicy:\n    automated:\n      prune: true      # delete resources removed from git\n      selfHeal: true   # revert manual cluster changes\n```\n\n**Flow:**\n1. Developer merges PR → updates `image.tag` in k8s-manifests repo\n2. ArgoCD detects Git change\n3. ArgoCD applies new manifests to cluster\n4. ArgoCD reports sync status back to Git/Slack"
+    },
+    {
+      "type": "comparison",
+      "title": "Deployment Strategy Comparison",
+      "columns": ["Strategy", "Downtime", "Rollback Speed", "Infrastructure Cost", "Risk"],
+      "rows": [
+        { "Strategy": "Recreate", "Downtime": "Yes", "Rollback Speed": "Slow (redeploy)", "Infrastructure Cost": "1x", "Risk": "High" },
+        { "Strategy": "Rolling Update", "Downtime": "No", "Rollback Speed": "Medium", "Infrastructure Cost": "1.1x", "Risk": "Medium" },
+        { "Strategy": "Blue-Green", "Downtime": "No", "Rollback Speed": "Instant (flip LB)", "Infrastructure Cost": "2x", "Risk": "Low" },
+        { "Strategy": "Canary", "Downtime": "No", "Rollback Speed": "Fast (0% canary)", "Infrastructure Cost": "1.1x", "Risk": "Very Low" }
+      ]
+    },
+    {
+      "type": "quiz",
+      "question": "What is the core principle of GitOps?",
+      "options": [
+        "All deployments must be done via Git pull requests",
+        "Git is the single source of truth — desired state is declared in Git and a controller continuously reconciles the actual state to match",
+        "GitOps means using Git for both application code and infrastructure code in the same repository",
+        "All team members must review and approve changes before deployment"
+      ],
+      "answer": 1,
+      "explanation": "GitOps declares the desired system state in Git. An agent (like ArgoCD) watches Git and continuously reconciles the live cluster to match. This means: deployments happen by committing to Git, manual cluster changes are automatically reverted, and the full deployment history is in Git's commit log."
+    }
+  ]
+}

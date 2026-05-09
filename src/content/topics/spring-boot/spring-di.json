@@ -1,0 +1,52 @@
+{
+  "id": "spring-di",
+  "title": "Dependency Injection Deep Dive",
+  "track": "spring-boot",
+  "summary": "Bean lifecycle, scopes, proxy types, circular dependencies, and how Spring's IoC container really works.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## The IoC Container\n\nSpring's core is the **Inversion of Control (IoC) container** — rather than objects creating their dependencies, the container creates and injects them. This decouples components and makes testing easy.\n\nTwo main container types:\n- `BeanFactory` — lazy, basic DI\n- `ApplicationContext` — eager (by default), adds events, i18n, AOP, auto-detection"
+    },
+    {
+      "type": "diagram",
+      "title": "Bean Lifecycle",
+      "content": "graph LR\n    A[Class discovered\\n@Component scan] --> B[BeanDefinition created]\n    B --> C[Bean instantiated\\nconstructors called]\n    C --> D[Dependencies injected\\n@Autowired]\n    D --> E[BeanPostProcessor\\nbeforeInitialization]\n    E --> F[@PostConstruct\\nInitializingBean.afterPropertiesSet]\n    F --> G[BeanPostProcessor\\nafterInitialization]\n    G --> H[Bean Ready for Use]\n    H --> I[Context closes]\n    I --> J[@PreDestroy\\nDisposableBean.destroy]\n    style H fill:#059669,color:#fff\n    style J fill:#dc2626,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Bean Scopes\n\n| Scope | Lifecycle | Use Case |\n|---|---|---|\n| **singleton** (default) | One per ApplicationContext | Stateless services |\n| **prototype** | New instance each request | Stateful/mutable objects |\n| **request** | One per HTTP request | Web: request-scoped data |\n| **session** | One per HTTP session | Web: user session data |\n| **application** | One per ServletContext | Web: app-wide data |\n\n```java\n@Component\n@Scope(\"prototype\")  // new instance every time\npublic class ReportGenerator { ... }\n\n// Or with web scopes\n@Component\n@RequestScope\npublic class RequestContext { ... }\n```\n\n### Injecting prototype into singleton — the problem!\n```java\n@Service // singleton\npublic class OrderService {\n    @Autowired\n    private ReportGenerator rg; // prototype — but injected ONCE at startup!\n    // rg will always be the SAME instance — singleton wins!\n}\n```"
+    },
+    {
+      "type": "callout",
+      "variant": "warning",
+      "title": "Prototype in Singleton Problem",
+      "content": "When you inject a prototype-scoped bean into a singleton, you get the same prototype instance every time — defeating the purpose. Solutions: (1) Inject ApplicationContext and call getBean() manually, (2) Use @Lookup method injection, (3) Use ObjectProvider<T>."
+    },
+    {
+      "type": "diagram",
+      "title": "Proxy Types: JDK Dynamic vs CGLIB",
+      "content": "graph TD\n    subgraph JDK Dynamic Proxy\n        I[Interface] --> P1[JDK Proxy]\n        P1 --> Bean1[Real Bean]\n        Note1[Bean must implement interface]\n    end\n    subgraph CGLIB Proxy\n        P2[CGLIB Subclass] --> Bean2[Real Bean]\n        Note2[Works on any class\\nbut cannot proxy final]\n    end\n    Spring[Spring decides which to use] --> I\n    Spring --> P2\n    style P1 fill:#4f46e5,color:#fff\n    style P2 fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Injection Types\n\n### Constructor Injection (preferred)\n```java\n@Service\npublic class OrderService {\n    private final UserRepo userRepo;\n    private final PaymentService paymentService;\n    \n    // @Autowired optional since Spring 4.3 (single constructor)\n    public OrderService(UserRepo userRepo, PaymentService paymentService) {\n        this.userRepo = userRepo;\n        this.paymentService = paymentService;\n    }\n}\n```\nAdvantages: immutable fields, visible dependencies, easy to unit test (just `new OrderService(mockRepo, mockPayment)`).\n\n### Field Injection (avoid)\n```java\n@Autowired  // Spring injects via reflection — bypasses constructors\nprivate UserRepo userRepo; // can't be final, hidden dependencies\n```\n\n## Circular Dependencies\n\nIf A → B → A (constructor injection), Spring throws `BeanCurrentlyInCreationException`.\n\nSolutions:\n1. **Redesign** — usually a sign of poor architecture\n2. `@Lazy` on one of the injections — defers initialization\n3. Use setter injection for one side"
+    },
+    {
+      "type": "markdown",
+      "content": "## BeanPostProcessor\n\n`BeanPostProcessor` is the extension point Spring uses internally for AOP, `@Autowired`, `@Value`, `@PostConstruct` etc.\n\n```java\n@Component\npublic class LoggingBeanPostProcessor implements BeanPostProcessor {\n    \n    @Override\n    public Object postProcessAfterInitialization(Object bean, String beanName) {\n        // Called after every bean is initialized\n        // Spring's AOP wraps beans in proxies HERE\n        return bean; // or a proxy wrapping bean\n    }\n}\n```"
+    },
+    {
+      "type": "quiz",
+      "question": "Why is constructor injection preferred over field injection in Spring?",
+      "options": [
+        "Constructor injection is faster at runtime",
+        "Field injection creates circular dependencies more often",
+        "Constructor injection makes dependencies explicit, allows final fields, and makes unit testing easy without Spring",
+        "Field injection doesn't work with @Qualifier"
+      ],
+      "answer": 2,
+      "explanation": "Constructor injection is preferred because: dependencies are explicit (visible in the constructor), fields can be final (immutable), and unit tests don't need Spring — just call new Service(mockDep1, mockDep2). Field injection hides dependencies and requires Spring's reflection-based injection even in tests."
+    }
+  ]
+}

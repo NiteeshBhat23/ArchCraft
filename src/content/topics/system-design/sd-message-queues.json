@@ -1,0 +1,62 @@
+{
+  "id": "sd-message-queues",
+  "title": "Message Queues",
+  "track": "system-design",
+  "summary": "Kafka vs RabbitMQ, pub/sub, ordering guarantees, idempotency, at-least-once vs exactly-once delivery.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## Why Message Queues?\n\nMessage queues decouple producers from consumers, enabling:\n- **Async processing** — return fast, process slowly\n- **Load leveling** — smooth out traffic spikes\n- **Fault tolerance** — messages persist even if consumer is down\n- **Fan-out** — one event → many consumers"
+    },
+    {
+      "type": "diagram",
+      "title": "Message Queue — Decoupling Producers and Consumers",
+      "content": "graph LR\n    P1[Order Service\\nProducer] -->|publish| Q[Message Queue]\n    P2[Payment Service\\nProducer] -->|publish| Q\n    Q -->|consume| C1[Email Service]\n    Q -->|consume| C2[Analytics Service]\n    Q -->|consume| C3[Inventory Service]\n    style Q fill:#4f46e5,color:#fff"
+    },
+    {
+      "type": "comparison",
+      "title": "Kafka vs RabbitMQ",
+      "columns": ["Aspect", "Apache Kafka", "RabbitMQ"],
+      "rows": [
+        { "Aspect": "Model", "Apache Kafka": "Log-based (pull)", "RabbitMQ": "Queue-based (push)" },
+        { "Aspect": "Message retention", "Apache Kafka": "Retained on disk (configurable)", "RabbitMQ": "Deleted after ACK" },
+        { "Aspect": "Replay", "Apache Kafka": "Yes — consumers can rewind", "RabbitMQ": "No — messages gone after ACK" },
+        { "Aspect": "Ordering", "Apache Kafka": "Per partition", "RabbitMQ": "Per queue" },
+        { "Aspect": "Throughput", "Apache Kafka": "Very high (millions/sec)", "RabbitMQ": "High (tens of thousands/sec)" },
+        { "Aspect": "Routing", "Apache Kafka": "Topic + partition key", "RabbitMQ": "Flexible (direct, topic, fanout, headers)" },
+        { "Aspect": "Best for", "Apache Kafka": "Event streaming, audit log, high throughput", "RabbitMQ": "Task queues, RPC, complex routing" }
+      ]
+    },
+    {
+      "type": "diagram",
+      "title": "Kafka Architecture",
+      "content": "graph LR\n    Prod[Producer] -->|write| T[Topic: orders\\nPartition 0\\nPartition 1\\nPartition 2]\n    T -->|Consumer Group A\\nanalytics| CGA1[Consumer 1]\n    T -->|Consumer Group A| CGA2[Consumer 2]\n    T -->|Consumer Group B\\nemail| CGB[Consumer 3]\n    Zk[ZooKeeper / KRaft\\nBroker coordination]\n    style T fill:#4f46e5,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Delivery Guarantees\n\n| Guarantee | What it means | Trade-off |\n|---|---|---|\n| **At-most-once** | Message delivered 0 or 1 times | May lose messages; fastest |\n| **At-least-once** | Message delivered 1+ times | May duplicate; most common |\n| **Exactly-once** | Message delivered exactly once | Hardest, slowest, most expensive |\n\n### At-least-once + Idempotency = Effectively Exactly-Once\n\nThe practical approach: use at-least-once delivery and make your consumers **idempotent** — processing the same message twice has the same effect as processing it once.\n\n```java\n// Idempotent consumer pattern\n@KafkaListener(topics = \"orders\")\npublic void processOrder(OrderEvent event) {\n    // Check if already processed\n    if (processedRepo.exists(event.getEventId())) {\n        return; // already handled — skip\n    }\n    \n    orderService.fulfill(event.getOrder());\n    processedRepo.save(event.getEventId()); // mark as done\n}\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Kafka Ordering\n\nKafka guarantees ordering **within a partition**, not across partitions.\n\n```java\n// All events for same order → same partition → guaranteed order\nProducerRecord<String, OrderEvent> record = new ProducerRecord<>(\n    \"orders\",\n    order.getId().toString(), // partition key — same order ID → same partition\n    event\n);\n```\n\n## Consumer Groups\n\n```\nTopic: orders (3 partitions)\nConsumer Group: fulfillment\n\nPartition 0 → Consumer A  (1:1 assignment)\nPartition 1 → Consumer B\nPartition 2 → Consumer C\n\nScale: add Consumer D → Kafka rebalances partitions\nDe-scale: remove Consumer C → its partition reassigned to remaining consumers\n```"
+    },
+    {
+      "type": "callout",
+      "variant": "tip",
+      "title": "Use Kafka for event streaming, RabbitMQ for task queues",
+      "content": "If you need to replay events, build event-sourced systems, or handle millions of messages per second — use Kafka. If you need complex routing, priority queues, RPC patterns, or per-message acknowledgment with short retention — use RabbitMQ."
+    },
+    {
+      "type": "quiz",
+      "question": "How do you achieve effectively exactly-once semantics with an at-least-once message queue?",
+      "options": [
+        "Use transactions in the message broker",
+        "Make consumers idempotent — processing the same message twice produces the same result",
+        "Use a separate exactly-once queue for critical messages",
+        "Increase the consumer acknowledgment timeout"
+      ],
+      "answer": 1,
+      "explanation": "The practical approach to exactly-once is: use at-least-once delivery (simpler, more available) AND make consumers idempotent. If a message is processed twice, the second processing has no effect (e.g. by tracking processed event IDs). This gives you exactly-once business semantics without the complexity of distributed exactly-once protocols."
+    }
+  ]
+}

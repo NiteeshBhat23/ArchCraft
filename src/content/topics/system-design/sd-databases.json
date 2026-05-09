@@ -1,0 +1,59 @@
+{
+  "id": "sd-databases",
+  "title": "Database Design at Scale",
+  "track": "system-design",
+  "summary": "Sharding, replication, indexing strategies, ACID vs BASE, and choosing the right database for each use case.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## ACID vs BASE\n\n### ACID (traditional relational DBs)\n- **Atomicity** — all operations in a transaction succeed or all fail\n- **Consistency** — DB moves from one valid state to another\n- **Isolation** — concurrent transactions appear serialized\n- **Durability** — committed data persists even after crashes\n\n### BASE (distributed NoSQL DBs)\n- **Basically Available** — system guarantees availability\n- **Soft state** — state may change over time even without input\n- **Eventual consistency** — system will eventually become consistent"
+    },
+    {
+      "type": "diagram",
+      "title": "ACID vs BASE Trade-offs",
+      "content": "graph LR\n    subgraph ACID\n        A1[Strong Consistency] \n        A2[Low Availability during partition]\n        A3[Higher latency]\n        A4[PostgreSQL, MySQL, Oracle]\n    end\n    subgraph BASE\n        B1[Eventual Consistency]\n        B2[High Availability]\n        B3[Lower latency]\n        B4[Cassandra, DynamoDB, MongoDB]\n    end\n    style A1 fill:#4f46e5,color:#fff\n    style B2 fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Replication\n\n### Single-Leader (Master-Replica)\n- One primary accepts writes, replicas serve reads\n- Replication lag: replicas may be milliseconds behind\n- Failover: promote a replica to primary on leader failure\n\n### Multi-Leader\n- Multiple primaries accept writes (across data centers)\n- Write conflicts must be resolved (last-write-wins, CRDTs)\n\n### Leaderless (Quorum)\n- Used by Cassandra, DynamoDB\n- Writes go to W nodes, reads from R nodes\n- Consistency guaranteed when W + R > N (total nodes)"
+    },
+    {
+      "type": "diagram",
+      "title": "Replication Strategies",
+      "content": "graph TB\n    subgraph Single-Leader\n        P[Primary\\nWrites + Reads] -->|async replicate| R1[Replica 1\\nReads only]\n        P -->|async replicate| R2[Replica 2\\nReads only]\n    end\n    subgraph Quorum N=3 W=2 R=2\n        C[Client] -->|write to 2/3| N1[Node 1]\n        C -->|write to 2/3| N2[Node 2]\n        N1 <-->|gossip| N3[Node 3]\n        N2 <-->|gossip| N3\n    end\n    style P fill:#4f46e5,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Sharding (Horizontal Partitioning)\n\nSplit data across multiple DB nodes when a single node can't handle the volume.\n\n### Sharding strategies:\n\n**Range-based**: shard by value range (user IDs 1-1M → shard 1, 1M-2M → shard 2)\n- ✓ Range queries efficient\n- ✗ Hot spots if data isn't uniformly distributed\n\n**Hash-based**: `shard = hash(key) % num_shards`\n- ✓ Even distribution\n- ✗ Range queries need scatter-gather across all shards\n\n**Directory-based**: lookup table maps key → shard\n- ✓ Flexible, can rebalance\n- ✗ Lookup service is a bottleneck\n\n### Resharding challenges:\n- Moving data when adding shards\n- Cross-shard transactions (very expensive)\n- Cross-shard joins (use denormalization or application-side joins)"
+    },
+    {
+      "type": "markdown",
+      "content": "## Indexing Strategies\n\n```sql\n-- B-Tree index (default) — range queries, equality\nCREATE INDEX idx_user_email ON users(email);\n\n-- Composite index — column ORDER matters\nCREATE INDEX idx_orders ON orders(user_id, created_at);\n-- Efficient: WHERE user_id=? AND created_at > ?\n-- Inefficient: WHERE created_at > ?  (leading column missing)\n\n-- Partial index — only index a subset\nCREATE INDEX idx_active_users ON users(email) WHERE active = true;\n\n-- GIN index — for arrays/JSONB\nCREATE INDEX idx_tags ON posts USING GIN(tags);\n```\n\n### Key rules:\n- **Cardinality** — index high-cardinality columns (email, ID), not low (boolean, status)\n- **Covering index** — include all columns a query needs to avoid table lookup\n- **Index selectivity** — if query returns >20% of rows, full scan may be faster"
+    },
+    {
+      "type": "comparison",
+      "title": "Database Types Cheat Sheet",
+      "columns": ["Type", "Examples", "Best For", "Avoid When"],
+      "rows": [
+        { "Type": "Relational", "Examples": "PostgreSQL, MySQL", "Best For": "ACID transactions, complex joins", "Avoid When": "Massive write scale, flexible schema" },
+        { "Type": "Document", "Examples": "MongoDB, Couchbase", "Best For": "Flexible schema, nested data", "Avoid When": "Multi-document transactions" },
+        { "Type": "Wide Column", "Examples": "Cassandra, HBase", "Best For": "Time-series, write-heavy, huge scale", "Avoid When": "Ad-hoc queries, relationships" },
+        { "Type": "Key-Value", "Examples": "Redis, DynamoDB", "Best For": "Caching, sessions, simple lookups", "Avoid When": "Complex queries" },
+        { "Type": "Graph", "Examples": "Neo4j, Amazon Neptune", "Best For": "Highly connected data, traversals", "Avoid When": "Non-graph workloads" },
+        { "Type": "Time-Series", "Examples": "InfluxDB, TimescaleDB", "Best For": "Metrics, IoT, events over time", "Avoid When": "Non-temporal data" }
+      ]
+    },
+    {
+      "type": "quiz",
+      "question": "In a quorum-based system with N=5, W=3, R=3, is strong consistency guaranteed?",
+      "options": [
+        "No, because W + R = 6 which is too large",
+        "Yes, because W + R > N (6 > 5), so reads will always see the latest write",
+        "No, quorum systems only provide eventual consistency regardless of W and R",
+        "Yes, but only if all 5 nodes are available"
+      ],
+      "answer": 1,
+      "explanation": "When W + R > N, there must be at least one node that participated in both the write and the read, guaranteeing the read sees the latest write. With N=5, W=3, R=3: W + R = 6 > 5, so strong consistency is achieved. If W + R <= N, reads might miss the latest write."
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "id": "arch-sidecar-ambassador",
+  "title": "Sidecar & Ambassador Patterns",
+  "track": "architecture-patterns",
+  "summary": "Sidecar containers for cross-cutting concerns, Ambassador for proxying, Dapr for portable microservices.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## Sidecar Pattern\n\nThe Sidecar pattern deploys a helper container alongside your main application container in the same pod. They share the same network namespace and optionally storage, but run as separate processes.\n\nThe sidecar handles **cross-cutting concerns** so the main app doesn't have to:\n- Logging/metrics collection\n- Service mesh proxy (Envoy)\n- Secret rotation\n- Config watching\n- TLS termination"
+    },
+    {
+      "type": "diagram",
+      "title": "Sidecar Container Pattern",
+      "content": "graph LR\n    subgraph Pod\n        App[Main App\\nPort 8080] <-->|localhost| Sidecar[Sidecar\\nEnvoy Proxy]\n        App <-->|shared volume| Logs[Log Collector\\nFluentd]\n    end\n    Sidecar <-->|mTLS| Other[Other Service]\n    Logs -->|ship logs| Loki[Loki]\n    style App fill:#4f46e5,color:#fff\n    style Sidecar fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Ambassador Pattern\n\nThe Ambassador pattern uses a proxy (helper container or separate service) to represent the application to the outside world. It handles:\n- Protocol translation\n- Request routing\n- Auth/authz at the edge\n- Retries and circuit breaking on behalf of the app\n\n```yaml\n# Ambassador as a sidecar proxy\nspec:\n  containers:\n  - name: my-app\n    image: my-app:v1\n    # communicates only with ambassador via localhost\n  - name: ambassador\n    image: envoyproxy/envoy:v1.28\n    # handles all inbound/outbound traffic\n    # - upstream service discovery\n    # - retries, timeouts\n    # - mTLS\n```\n\n**Key difference from Sidecar**: Ambassador specifically handles the communication proxy role, while Sidecar is broader (any co-located helper)."
+    },
+    {
+      "type": "markdown",
+      "content": "## Dapr — Distributed Application Runtime\n\nDapr is a portable, event-driven runtime that implements common microservice building blocks as sidecar APIs. Your app calls `localhost:3500/v1.0/...` and Dapr handles the actual implementation.\n\n```java\n// Without Dapr: service directly knows about Kafka, Redis, PostgreSQL\nkafkaProducer.send(\"orders\", new OrderEvent(order));\nredis.set(\"user:\" + id, user);\n\n// With Dapr: service calls generic APIs\n// Dapr sidecar handles the actual broker/store\nDaprClient client = new DaprClientBuilder().build();\nclient.publishEvent(\"pubsub\", \"orders\", orderEvent).block();\nclient.saveState(\"statestore\", \"user:\" + id, user).block();\n// Switch Kafka→RabbitMQ or Redis→CosmosDB in config, zero code changes\n```\n\n### Dapr Building Blocks:\n| Block | What it provides |\n|---|---|\n| Service invocation | Service discovery + mTLS + retries |\n| State management | Key-value store (Redis, CosmosDB, PostgreSQL) |\n| Pub/Sub | Event streaming (Kafka, RabbitMQ, Azure Service Bus) |\n| Bindings | Input/Output bindings to external systems |\n| Secrets | Secret store integration (Vault, K8s Secrets) |\n| Distributed lock | Mutex across services |"
+    },
+    {
+      "type": "diagram",
+      "title": "Dapr Sidecar Architecture",
+      "content": "graph LR\n    subgraph Service A Pod\n        AppA[App A] <-->|localhost:3500| DaprA[Dapr Sidecar]\n    end\n    subgraph Service B Pod\n        AppB[App B] <-->|localhost:3500| DaprB[Dapr Sidecar]\n    end\n    DaprA <-->|mTLS| DaprB\n    DaprA -->|pub/sub| Kafka[Kafka / RabbitMQ]\n    DaprA -->|state| Redis[Redis / Cosmos]\n    DaprA -->|secrets| Vault[Vault / K8s Secrets]\n    style DaprA fill:#059689,color:#fff\n    style DaprB fill:#059689,color:#fff"
+    },
+    {
+      "type": "comparison",
+      "title": "Sidecar vs Ambassador vs Service Mesh",
+      "columns": ["Pattern", "Scope", "Who manages it", "Best For"],
+      "rows": [
+        { "Pattern": "Sidecar (generic)", "Scope": "Pod-level helper", "Who manages it": "Application team", "Best For": "Log shipping, config watching" },
+        { "Pattern": "Ambassador", "Scope": "Outbound proxy", "Who manages it": "Application team", "Best For": "Protocol translation, per-service routing" },
+        { "Pattern": "Service Mesh (Istio)", "Scope": "All pod traffic", "Who manages it": "Platform team", "Best For": "mTLS, observability at cluster scale" },
+        { "Pattern": "Dapr", "Scope": "Building blocks API", "Who manages it": "Platform team", "Best For": "Portable multi-cloud microservices" }
+      ]
+    },
+    {
+      "type": "quiz",
+      "question": "What is the primary benefit of Dapr's sidecar approach for microservices?",
+      "options": [
+        "It speeds up inter-service communication significantly",
+        "Applications talk to generic local APIs and Dapr handles the actual infrastructure — making services portable across brokers, state stores, and clouds",
+        "It replaces the need for a service mesh entirely",
+        "It compiles application code to native binaries for better performance"
+      ],
+      "answer": 1,
+      "explanation": "Dapr exposes generic building block APIs on localhost. The actual implementation (Kafka vs RabbitMQ, Redis vs CosmosDB) is configured in Dapr components, not in application code. This makes services portable — you can switch infrastructure without code changes, and the same service runs identically on-premises or in any cloud."
+    }
+  ]
+}

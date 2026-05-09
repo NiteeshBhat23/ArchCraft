@@ -1,0 +1,57 @@
+{
+  "id": "arch-security-architecture",
+  "title": "Security Architecture",
+  "track": "architecture-patterns",
+  "summary": "Zero-trust architecture, defence-in-depth, threat modelling (STRIDE), secrets management, and securing microservices.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## Zero-Trust Architecture\n\nTraditional security assumed a trusted network perimeter — inside the firewall is safe. Zero-trust rejects this:\n\n**Never trust, always verify.**\n\nEvery request — regardless of network origin — must be authenticated, authorized, and encrypted. No implicit trust based on IP or network location.\n\n### Zero-trust principles:\n1. **Verify explicitly** — always authenticate and authorize using all available data\n2. **Use least privilege** — limit access to only what's needed\n3. **Assume breach** — minimize blast radius, segment access, encrypt everything"
+    },
+    {
+      "type": "diagram",
+      "title": "Traditional Perimeter vs Zero-Trust",
+      "content": "graph LR\n    subgraph Traditional Perimeter\n        FW[Firewall] -->|trusted inside| Internal[All internal services\\ntrust each other]\n        External[External] -->|blocked| FW\n        Attacker[Attacker inside] -->|unrestricted| Internal\n    end\n    subgraph Zero-Trust\n        ZT[Every request verified]\n        ZT -->|identity check| Auth[AuthN + AuthZ]\n        ZT -->|encrypt all| TLS[mTLS between services]\n        ZT -->|least privilege| RBAC[Fine-grained RBAC]\n        ZT -->|monitor| SIEM[SIEM + Anomaly Detection]\n    end\n    style Attacker fill:#dc2626,color:#fff\n    style ZT fill:#4f46e5,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Defence in Depth\n\nMultiple overlapping security layers — if one fails, others contain the breach:\n\n```\nLayer 1: Network perimeter (firewall, DDoS protection)\nLayer 2: Transport (TLS everywhere, mTLS between services)\nLayer 3: Authentication (OAuth2/OIDC, MFA)\nLayer 4: Authorization (RBAC, ABAC, OPA policies)\nLayer 5: Application (input validation, OWASP controls)\nLayer 6: Data (encryption at rest, field-level encryption for PII)\nLayer 7: Monitoring (anomaly detection, audit logs, SIEM)\n```\n\nAn attacker who defeats Layer 3 is still stopped by Layer 4."
+    },
+    {
+      "type": "markdown",
+      "content": "## Threat Modelling with STRIDE\n\nSTRIDE is a framework for identifying security threats:\n\n| Threat | Description | Mitigation |\n|---|---|---|\n| **S**poofing | Impersonating another user/service | Authentication, mTLS |\n| **T**ampering | Modifying data in transit/at rest | HTTPS, message signing, checksums |\n| **R**epudiation | Denying actions took place | Audit logs, digital signatures |\n| **I**nformation Disclosure | Exposing sensitive data | Encryption, access controls |\n| **D**enial of Service | Overwhelming resources | Rate limiting, circuit breakers |\n| **E**levation of Privilege | Gaining unauthorized access | Authorization, least privilege |\n\n### Process:\n1. Draw a Data Flow Diagram (DFD) of your system\n2. Identify trust boundaries (where data crosses security zones)\n3. For each component and data flow, apply STRIDE\n4. Rate severity (DREAD scoring)\n5. Mitigate high-priority threats"
+    },
+    {
+      "type": "diagram",
+      "title": "Microservices Security Layers",
+      "content": "graph TB\n    Client[Client] -->|TLS + JWT| Gateway[API Gateway\\nAuthN + Rate limit]\n    Gateway -->|mTLS + JWT validation| SA[Service A]\n    Gateway -->|mTLS + JWT validation| SB[Service B]\n    SA -->|mTLS| SB\n    SA -->|encrypted| DB[(Encrypted DB)]\n    SA -->|dynamic secrets| Vault[HashiCorp Vault]\n    OPA[OPA Policy Engine] -->|authorization decisions| SA\n    OPA -->|authorization decisions| SB\n    SIEM[SIEM] <-- |audit events| SA\n    SIEM <-- |audit events| SB\n    style Gateway fill:#4f46e5,color:#fff\n    style Vault fill:#d97706,color:#fff\n    style OPA fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## OPA — Policy as Code\n\nOpen Policy Agent (OPA) externalizes authorization decisions from application code. Policies are written in Rego:\n\n```rego\n# policy.rego\npackage orders.authz\n\n# Default: deny all\ndefault allow = false\n\n# Allow if user owns the order\nallow {\n    input.method == \"GET\"\n    input.path = [\"orders\", order_id]\n    order := data.orders[order_id]\n    order.customer_id == input.user.id\n}\n\n# Allow admins full access\nallow {\n    input.user.roles[_] == \"ADMIN\"\n}\n```\n\n```java\n// Spring Boot: ask OPA before serving request\n@PreAuthorize(\"@opaClient.isAllowed(#orderId, authentication)\")\n@GetMapping(\"/orders/{orderId}\")\npublic Order getOrder(@PathVariable String orderId) { ... }\n```\n\nBenefits: policies are version-controlled, testable, auditable, and separate from application code."
+    },
+    {
+      "type": "comparison",
+      "title": "Authorization Models",
+      "columns": ["Model", "Description", "Flexibility", "Best For"],
+      "rows": [
+        { "Model": "RBAC", "Description": "Role-based: user has roles, roles have permissions", "Flexibility": "Medium", "Best For": "Enterprise, well-defined roles" },
+        { "Model": "ABAC", "Description": "Attribute-based: decisions based on subject/resource/environment attributes", "Flexibility": "High", "Best For": "Complex contextual policies" },
+        { "Model": "ReBAC", "Description": "Relationship-based (like Google Zanzibar)", "Flexibility": "Very High", "Best For": "Social graphs, document sharing" },
+        { "Model": "OPA/Cedar", "Description": "Policy-as-code engine", "Flexibility": "Very High", "Best For": "Microservices, infrastructure" }
+      ]
+    },
+    {
+      "type": "quiz",
+      "question": "What does 'assume breach' mean in Zero-Trust architecture?",
+      "options": [
+        "Assume that your perimeter firewall will be breached and add more firewall rules",
+        "Design security assuming attackers are already inside — minimize blast radius, encrypt internally, monitor for anomalies",
+        "Always test your security controls by simulating breaches",
+        "Assume that passwords will be leaked and enforce mandatory rotation"
+      ],
+      "answer": 1,
+      "explanation": "'Assume breach' is a Zero-Trust principle that says: don't rely on perimeter security to keep attackers out. Instead, assume they're already inside and design accordingly: microsegment networks, encrypt service-to-service traffic, apply least privilege so compromised service X can't access service Y's data, and monitor for anomalous behavior."
+    }
+  ]
+}

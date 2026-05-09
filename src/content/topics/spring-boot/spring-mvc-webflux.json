@@ -1,0 +1,61 @@
+{
+  "id": "spring-mvc-webflux",
+  "title": "Spring MVC vs WebFlux",
+  "track": "spring-boot",
+  "summary": "Threading models, backpressure, when to use reactive, and how WebFlux handles concurrency differently from MVC.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## Threading Models\n\n### Spring MVC (Servlet Stack)\n- **Thread-per-request** model\n- Each request gets a thread from the servlet container pool (default: 200 threads in Tomcat)\n- Thread blocks waiting for DB, HTTP calls, etc.\n- Scales to ~200-500 concurrent requests\n\n### Spring WebFlux (Reactive Stack)\n- **Event loop** model (like Node.js)\n- Small number of threads (usually = CPU cores)\n- Threads never block — tasks are registered as callbacks\n- Scales to thousands of concurrent requests with same thread count"
+    },
+    {
+      "type": "diagram",
+      "title": "MVC vs WebFlux Threading Model",
+      "content": "graph TB\n    subgraph Spring MVC - Thread per Request\n        R1[Request 1] --> T1[Thread 1 BLOCKED]\n        R2[Request 2] --> T2[Thread 2 BLOCKED]\n        R3[Request 3] --> T3[Thread 3 BLOCKED]\n        RN[Request N] --> TN[Thread N - pool exhausted!]\n    end\n    subgraph Spring WebFlux - Event Loop\n        EL[Event Loop\\n4 threads] --> |non-blocking| W1[Request 1]\n        EL --> |non-blocking| W2[Request 2]\n        EL --> |non-blocking| W3[1000 requests!]\n    end\n    style TN fill:#dc2626,color:#fff\n    style EL fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Reactive Types: Mono and Flux\n\n```java\n// Mono: 0 or 1 item\nMono<User> user = userRepo.findById(id); // async single result\n\n// Flux: 0 to N items\nFlux<User> users = userRepo.findAll(); // async stream\n\n// Chaining (like CompletableFuture but richer)\nMono<UserProfile> profile = userRepo.findById(id)\n    .flatMap(user -> orderRepo.findByUserId(user.getId())\n        .collectList()\n        .map(orders -> new UserProfile(user, orders)))\n    .switchIfEmpty(Mono.error(new NotFoundException()));\n```\n\n### Key operators:\n| Operator | Purpose |\n|---|---|\n| `map()` | Transform item |\n| `flatMap()` | Async transform (returns Mono/Flux) |\n| `filter()` | Filter items |\n| `zipWith()` | Combine two publishers |\n| `switchIfEmpty()` | Fallback if empty |\n| `onErrorResume()` | Error recovery |"
+    },
+    {
+      "type": "diagram",
+      "title": "Reactive Pipeline with Backpressure",
+      "content": "graph LR\n    DB[Database\\nFlux<Row>] -->|produces| Proc[Processing\\noperators]\n    Proc -->|produces| Client[HTTP Client]\n    Client -->|demand signal| Proc\n    Proc -->|demand signal| DB\n    Note[Backpressure: consumer controls\\nhow fast producer sends]\n    style DB fill:#4f46e5,color:#fff\n    style Client fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Backpressure\n\nBackpressure is the ability for a **consumer to signal how fast it can consume** to the producer. This prevents out-of-memory errors when producers are faster than consumers.\n\n```java\n// Without backpressure — producer overwhelms consumer\nFlux.range(1, 1_000_000)\n    .subscribe(item -> slowProcess(item)); // might OOM\n\n// With backpressure — consumer requests items it can handle\nFlux.range(1, 1_000_000)\n    .limitRate(100)  // request 100 at a time\n    .subscribe(item -> slowProcess(item));\n```"
+    },
+    {
+      "type": "comparison",
+      "title": "When to Use MVC vs WebFlux",
+      "columns": ["Scenario", "Use MVC", "Use WebFlux"],
+      "rows": [
+        { "Scenario": "Team familiarity", "Use MVC": "✓ Most teams know it", "Use WebFlux": "Learning curve" },
+        { "Scenario": "I/O-bound, high concurrency", "Use MVC": "Limited (thread pool)", "Use WebFlux": "✓ Ideal" },
+        { "Scenario": "CPU-bound work", "Use MVC": "✓ Good", "Use WebFlux": "No benefit" },
+        { "Scenario": "Streaming responses", "Use MVC": "Limited (SSE only)", "Use WebFlux": "✓ Native" },
+        { "Scenario": "Blocking libraries (JDBC)", "Use MVC": "✓ Natural", "Use WebFlux": "Needs Scheduler workaround" },
+        { "Scenario": "R2DBC / reactive DB", "Use MVC": "Possible but wasteful", "Use WebFlux": "✓ Natural fit" }
+      ]
+    },
+    {
+      "type": "callout",
+      "variant": "warning",
+      "title": "Don't block in WebFlux",
+      "content": "Never call blocking code (JDBC, Thread.sleep, .block()) on a WebFlux event loop thread. It will block ALL requests on that thread. If you must use blocking I/O, offload to a separate Scheduler: Mono.fromCallable(() -> blockingCall()).subscribeOn(Schedulers.boundedElastic())"
+    },
+    {
+      "type": "quiz",
+      "question": "What is backpressure in reactive programming?",
+      "options": [
+        "The CPU pressure caused by reactive transformations",
+        "The ability for a consumer to signal to a producer how fast it can consume data",
+        "A technique to buffer data before sending to clients",
+        "The overhead of creating Mono and Flux objects"
+      ],
+      "answer": 1,
+      "explanation": "Backpressure is a flow control mechanism where the consumer signals to the producer how much data it can handle. This prevents slow consumers from being overwhelmed by fast producers, avoiding out-of-memory errors and maintaining system stability."
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "id": "ds-cap-theorem",
+  "title": "CAP Theorem",
+  "track": "distributed-systems",
+  "summary": "CAP theorem with concrete examples, CP vs AP systems, network partitions in the real world, and PACELC extension.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## The CAP Theorem\n\nProven by Eric Brewer (2000) and formally by Gilbert & Lynch (2002): a distributed data store can only **guarantee two of three** properties simultaneously:\n\n- **C — Consistency**: Every read receives the most recent write or an error\n- **A — Availability**: Every request receives a (non-error) response — no guarantee it's the most recent data\n- **P — Partition Tolerance**: The system continues operating even when network messages are dropped or delayed\n\n**The key insight**: In any real distributed system, network partitions WILL happen. So the real choice is **CP vs AP** — you can't avoid P."
+    },
+    {
+      "type": "diagram",
+      "title": "CAP Theorem Triangle",
+      "content": "graph TD\n    C[Consistency\\nAll nodes see same data] --- A[Availability\\nSystem always responds]\n    A --- P[Partition Tolerance\\nSurvives network splits]\n    P --- C\n    CP[CP Systems\\nPostgreSQL, ZooKeeper, HBase\\nChoose consistency over availability]\n    AP[AP Systems\\nCassandra, DynamoDB, CouchDB\\nChoose availability over consistency]\n    CA[CA Systems\\nOnly possible without partitions\\nSingle-node databases]\n    C & P --> CP\n    A & P --> AP\n    C & A --> CA\n    style CP fill:#4f46e5,color:#fff\n    style AP fill:#059669,color:#fff\n    style CA fill:#6b7280,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## CP Systems — Consistency over Availability\n\nDuring a partition, a CP system **refuses to respond** rather than return potentially stale data.\n\n**Example: ZooKeeper**\n- Used for distributed coordination (leader election, locks)\n- If a majority quorum is not reachable → ZooKeeper refuses reads and writes\n- Guarantees every client sees the same, consistent view\n\n**Example: PostgreSQL with synchronous replication**\n- Write is only acknowledged when replica has persisted it\n- If replica is unreachable → write blocks (CP behavior)\n\n**When to use CP**: financial transactions, configuration management, leader election — where stale data causes serious problems."
+    },
+    {
+      "type": "markdown",
+      "content": "## AP Systems — Availability over Consistency\n\nDuring a partition, an AP system **continues serving requests** even if different nodes return different data.\n\n**Example: Cassandra**\n- With quorum writes, if some replicas are unreachable, write still succeeds to available replicas\n- Reads may return stale data temporarily\n- Eventually, when partition heals, replicas sync via gossip + hinted handoff\n\n**Example: DNS**\n- DNS changes propagate with TTL delay — different servers return different IPs temporarily\n- Always returns an answer (high availability) even if not the latest one\n\n**When to use AP**: shopping carts, social media likes, analytics, user preferences — where slight staleness is acceptable."
+    },
+    {
+      "type": "diagram",
+      "title": "Network Partition — CP vs AP Behavior",
+      "content": "graph TB\n    subgraph Network Partition\n        N1[Node 1] -.-|partition!| N2[Node 2]\n    end\n    subgraph CP System Behavior\n        CP1[Node 1] -->|refuse request| CP_E[503 Service Unavailable]\n        CP1 -.->|cannot reach Node 2| CP_E\n    end\n    subgraph AP System Behavior\n        AP1[Node 1] -->|serve stale data| AP_R[200 OK maybe stale]\n    end\n    style CP_E fill:#dc2626,color:#fff\n    style AP_R fill:#d97706,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## PACELC — The Real-World Extension\n\nCAP only addresses partition scenarios. **PACELC** (Abadi, 2012) extends this:\n\n> If there is a Partition (P): choose between Availability (A) and Consistency (C)\n> Else (E, no partition): choose between Latency (L) and Consistency (C)\n\nThis captures the everyday trade-off: even without partitions, you trade off latency vs consistency.\n\n| System | Partition | Normal Operation |\n|---|---|---|\n| PostgreSQL (sync replication) | CP | EC (higher latency for consistency) |\n| Cassandra | AP | EL (low latency, eventual consistency) |\n| DynamoDB (eventual) | AP | EL |\n| DynamoDB (strong) | CP | EC |"
+    },
+    {
+      "type": "callout",
+      "variant": "info",
+      "title": "CAP is often misunderstood",
+      "content": "CAP doesn't mean you pick two properties and completely abandon the third. Real systems fine-tune their trade-offs: Cassandra lets you configure consistency level per operation (ONE, QUORUM, ALL). You can choose stronger consistency for critical reads and weaker for analytics."
+    },
+    {
+      "type": "quiz",
+      "question": "In a distributed system, why can you not avoid the P (Partition Tolerance) requirement?",
+      "options": [
+        "Because all distributed systems use eventually consistent algorithms",
+        "Because network partitions (dropped/delayed messages) are inevitable in any real distributed network",
+        "Because partitions are required for horizontal scaling",
+        "Because the CAP theorem was proven mathematically to require P"
+      ],
+      "answer": 1,
+      "explanation": "Network partitions — where nodes cannot communicate with each other — happen in every real distributed system due to hardware failures, network issues, or timeouts. Since you cannot prevent partitions, you must tolerate them (P is non-negotiable), making the real choice between consistency (C) and availability (A) during a partition."
+    }
+  ]
+}

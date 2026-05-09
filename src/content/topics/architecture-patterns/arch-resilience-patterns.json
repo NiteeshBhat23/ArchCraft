@@ -1,0 +1,59 @@
+{
+  "id": "arch-resilience-patterns",
+  "title": "Resilience Patterns",
+  "track": "architecture-patterns",
+  "summary": "Circuit breaker, bulkhead, retry, fallback, and timeout patterns with Resilience4j in Spring Boot.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## Why Resilience?\n\nIn microservices, every remote call can fail. Without resilience patterns, one slow downstream service can take down your entire application through thread exhaustion and cascading failures.\n\n**Resilience4j** is the successor to Netflix Hystrix for Spring Boot applications."
+    },
+    {
+      "type": "diagram",
+      "title": "Resilience4j Decorator Chain",
+      "content": "graph LR\n    Call[Service Call] --> RL[RateLimiter]\n    RL --> B[Bulkhead]\n    B --> CB[CircuitBreaker]\n    CB --> Retry[Retry]\n    Retry --> TO[TimeLimiter]\n    TO --> Svc[Downstream Service]\n    style CB fill:#4f46e5,color:#fff\n    style B fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Circuit Breaker with Resilience4j\n\n```java\n@Service\npublic class PaymentService {\n\n    @CircuitBreaker(name = \"payment\", fallbackMethod = \"paymentFallback\")\n    @Retry(name = \"payment\")\n    @TimeLimiter(name = \"payment\")\n    public CompletableFuture<PaymentResult> charge(ChargeRequest req) {\n        return CompletableFuture.supplyAsync(() ->\n            paymentGateway.charge(req));\n    }\n\n    // Called when circuit is OPEN or all retries exhausted\n    public CompletableFuture<PaymentResult> paymentFallback(ChargeRequest req, Exception ex) {\n        log.warn(\"Payment fallback triggered: {}\", ex.getMessage());\n        return CompletableFuture.completedFuture(\n            PaymentResult.queued(req.getOrderId())); // queue for later retry\n    }\n}\n```\n\n```yaml\n# application.yml\nresilience4j:\n  circuitbreaker:\n    instances:\n      payment:\n        slidingWindowSize: 10\n        failureRateThreshold: 50    # open if 50% fail in last 10 calls\n        waitDurationInOpenState: 30s\n        permittedNumberOfCallsInHalfOpenState: 3\n  retry:\n    instances:\n      payment:\n        maxAttempts: 3\n        waitDuration: 500ms\n        exponentialBackoffMultiplier: 2\n  timelimiter:\n    instances:\n      payment:\n        timeoutDuration: 3s\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Bulkhead Pattern\n\nIsolate resources so one slow service can't starve others:\n\n```java\n@Bulkhead(name = \"inventoryService\", type = Bulkhead.Type.THREADPOOL)\npublic CompletableFuture<Stock> checkStock(String productId) {\n    return CompletableFuture.supplyAsync(() ->\n        inventoryClient.getStock(productId));\n}\n```\n\n```yaml\nresilience4j:\n  thread-pool-bulkhead:\n    instances:\n      inventoryService:\n        maxThreadPoolSize: 10\n        coreThreadPoolSize: 5\n        queueCapacity: 20        # reject if queue full → bulkhead rejects\n```\n\nNow even if `inventoryService` is completely slow:\n- Maximum 10 threads blocked on it\n- All other services still have their full thread pools\n- `BulkheadFullException` thrown immediately when queue full"
+    },
+    {
+      "type": "markdown",
+      "content": "## Timeout Pattern\n\nAlways set timeouts on remote calls. A call with no timeout can block a thread forever:\n\n```java\n// RestClient (Spring Boot 3.2+)\nRestClient restClient = RestClient.builder()\n    .baseUrl(\"https://payment-service\")\n    .requestFactory(factory -> {\n        factory.setConnectTimeout(Duration.ofSeconds(2));\n        factory.setReadTimeout(Duration.ofSeconds(5));\n    })\n    .build();\n\n// WebClient\nWebClient webClient = WebClient.builder()\n    .baseUrl(\"https://payment-service\")\n    .build();\n\nwebClient.get()\n    .retrieve()\n    .bodyToMono(PaymentResult.class)\n    .timeout(Duration.ofSeconds(3))   // reactive timeout\n    .onErrorResume(TimeoutException.class, e -> Mono.just(fallback));\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "Resilience Pattern Decision Tree",
+      "content": "graph TD\n    Problem[Service Call Problem] --> Q1{Is service\\njust slow?}\n    Q1 -->|Yes| Timeout[Apply Timeout\\n+ TimeLimiter]\n    Q1 -->|No, failing| Q2{Is it transient\\n(network blip)?}\n    Q2 -->|Yes| Retry[Apply Retry\\nwith backoff]\n    Q2 -->|No, consistently failing| CB[Apply CircuitBreaker\\nfast-fail + fallback]\n    Q1 & Q2 --> Q3{Affecting\\nother services?}\n    Q3 -->|Yes| Bulkhead[Apply Bulkhead\\nisolate thread pool]\n    style CB fill:#4f46e5,color:#fff\n    style Timeout fill:#d97706,color:#fff\n    style Retry fill:#059669,color:#fff"
+    },
+    {
+      "type": "comparison",
+      "title": "Resilience Patterns Quick Reference",
+      "columns": ["Pattern", "Problem", "Mechanism"],
+      "rows": [
+        { "Pattern": "Timeout", "Problem": "Thread blocked forever", "Mechanism": "Fail after N ms" },
+        { "Pattern": "Retry", "Problem": "Transient network failures", "Mechanism": "Try again with backoff+jitter" },
+        { "Pattern": "Circuit Breaker", "Problem": "Cascading failures", "Mechanism": "Fast-fail when error rate high" },
+        { "Pattern": "Bulkhead", "Problem": "One service starves others", "Mechanism": "Separate thread pools" },
+        { "Pattern": "Rate Limiter", "Problem": "Overloading downstream", "Mechanism": "Cap calls per second" },
+        { "Pattern": "Fallback", "Problem": "Service unavailable", "Mechanism": "Return cached/default response" }
+      ]
+    },
+    {
+      "type": "quiz",
+      "question": "What happens when a CircuitBreaker transitions to OPEN state?",
+      "options": [
+        "All calls are queued until the service recovers",
+        "Calls immediately fail fast (throw exception or call fallback) without calling the downstream service",
+        "Calls are retried with exponential backoff",
+        "The thread pool is expanded to handle backlog"
+      ],
+      "answer": 1,
+      "explanation": "When the circuit is OPEN, calls immediately fail fast — the downstream service is not called at all. This prevents thread pile-up on a known-bad service and allows it time to recover. After the configured wait time, the circuit transitions to HALF-OPEN and allows a probe request through."
+    }
+  ]
+}

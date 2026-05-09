@@ -1,0 +1,52 @@
+{
+  "id": "java-modern-features",
+  "title": "Java 17–21 Features",
+  "track": "java",
+  "summary": "Records, sealed classes, pattern matching, text blocks, virtual threads (Project Loom), and structured concurrency.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## Records (Java 16+)\n\nRecords are immutable data carriers — they automatically generate `equals()`, `hashCode()`, `toString()`, and accessor methods.\n\n```java\n// Before records\npublic class Point {\n    private final int x;\n    private final int y;\n    public Point(int x, int y) { this.x = x; this.y = y; }\n    public int x() { return x; }\n    public int y() { return y; }\n    // equals, hashCode, toString boilerplate...\n}\n\n// With records — one line!\npublic record Point(int x, int y) {}\n\n// Usage\nPoint p = new Point(3, 4);\np.x(); // 3\n```\n\nRecords can have custom constructors (compact constructors), implement interfaces, and have static members. They **cannot** extend classes or be subclassed."
+    },
+    {
+      "type": "markdown",
+      "content": "## Sealed Classes (Java 17+)\n\nSealed classes restrict which classes can extend them — enabling **exhaustive pattern matching**.\n\n```java\npublic sealed interface Shape\n    permits Circle, Rectangle, Triangle {}\n\npublic record Circle(double radius) implements Shape {}\npublic record Rectangle(double w, double h) implements Shape {}\npublic record Triangle(double base, double height) implements Shape {}\n\n// Compiler knows all possible subtypes!\ndouble area = switch (shape) {\n    case Circle c    -> Math.PI * c.radius() * c.radius();\n    case Rectangle r -> r.w() * r.h();\n    case Triangle t  -> 0.5 * t.base() * t.height();\n    // No default needed — exhaustive!\n};\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "Sealed Class Hierarchy",
+      "content": "graph TD\n    Shape[\"sealed interface Shape\\npermits Circle, Rectangle, Triangle\"] --> Circle[\"record Circle\\nimplements Shape\"]\n    Shape --> Rectangle[\"record Rectangle\\nimplements Shape\"]\n    Shape --> Triangle[\"record Triangle\\nimplements Shape\"]\n    X[\"class Hexagon\"] -->|❌ not permitted| Shape\n    style Shape fill:#4f46e5,color:#fff\n    style X fill:#dc2626,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Pattern Matching\n\n### instanceof pattern (Java 16+)\n```java\n// Old way\nif (obj instanceof String) {\n    String s = (String) obj;\n    System.out.println(s.length());\n}\n\n// Pattern matching\nif (obj instanceof String s) {\n    System.out.println(s.length()); // s is already cast\n}\n```\n\n### Switch expressions with patterns (Java 21)\n```java\nObject obj = ...\nString result = switch (obj) {\n    case Integer i when i > 0 -> \"positive int: \" + i;\n    case Integer i            -> \"non-positive int: \" + i;\n    case String s             -> \"string: \" + s;\n    case null                 -> \"null\";\n    default                   -> \"other\";\n};\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Virtual Threads (Java 21 — Project Loom)\n\nVirtual threads are **lightweight threads managed by the JVM** instead of the OS. They enable millions of concurrent threads with minimal memory overhead.\n\n```java\n// Platform thread — expensive, maps 1:1 to OS thread\nThread t = new Thread(() -> doWork());\n\n// Virtual thread — cheap, JVM manages scheduling\nThread vt = Thread.ofVirtual().start(() -> doWork());\n\n// With executor\ntry (var executor = Executors.newVirtualThreadPerTaskExecutor()) {\n    IntStream.range(0, 1_000_000).forEach(i ->\n        executor.submit(() -> handleRequest(i)));\n}\n```\n\n### Why it matters:\n- Old model: 1 request = 1 platform thread (expensive, ~2MB each)\n- New model: 1 request = 1 virtual thread (~few KB each)\n- No need for reactive/async programming for I/O concurrency\n- **Write blocking code, get async performance**"
+    },
+    {
+      "type": "diagram",
+      "title": "Virtual Threads vs Platform Threads",
+      "content": "graph TB\n    subgraph Platform Threads\n        PT1[Platform Thread 1\\n~1-2MB] \n        PT2[Platform Thread 2\\n~1-2MB]\n        PT3[Platform Thread N\\n~1-2MB]\n        OS[OS Kernel Threads]\n        PT1 --> OS\n        PT2 --> OS\n        PT3 --> OS\n    end\n    subgraph Virtual Threads - Project Loom\n        VT1[VThread 1] \n        VT2[VThread 2]\n        VTMM[VThread 1,000,000]\n        Carrier1[Carrier Thread 1]\n        Carrier2[Carrier Thread 2]\n        VT1 --> Carrier1\n        VT2 --> Carrier2\n        VTMM --> Carrier1\n        Carrier1 --> OS2[OS Kernel Threads]\n        Carrier2 --> OS2\n    end\n    style Carrier1 fill:#4f46e5,color:#fff\n    style Carrier2 fill:#4f46e5,color:#fff"
+    },
+    {
+      "type": "callout",
+      "variant": "tip",
+      "title": "Spring Boot 3.2+ supports virtual threads out of the box",
+      "content": "Set spring.threads.virtual.enabled=true in application.properties to have Spring Boot use virtual threads for web request handling. This dramatically improves I/O-bound throughput without any code changes."
+    },
+    {
+      "type": "quiz",
+      "question": "What is the key advantage of sealed classes combined with pattern matching?",
+      "options": [
+        "They allow classes to have multiple inheritance",
+        "They enable exhaustive switch expressions — the compiler knows all possible subtypes",
+        "They make classes immutable automatically",
+        "They improve runtime performance by reducing instanceof checks"
+      ],
+      "answer": 1,
+      "explanation": "Sealed classes declare exactly which classes can implement/extend them. Combined with pattern matching in switch, the compiler can verify exhaustiveness — if you handle all permitted subtypes, no default case is needed and the compiler warns if you miss one."
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "id": "sd-caching",
+  "title": "Caching Strategies",
+  "track": "system-design",
+  "summary": "Cache-aside, write-through, write-behind, eviction policies, thundering herd, and Redis patterns.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## Why Cache?\n\nCaching stores frequently-accessed data in a fast store (memory) to avoid repeated expensive operations (DB queries, API calls, computations).\n\n**Numbers to know:**\n- L1 cache: ~1ns\n- Main memory (RAM): ~100ns\n- SSD: ~100μs\n- Network (same DC): ~500μs\n- HDD: ~10ms\n- Remote DB query: ~1-10ms\n\nA cache hit (RAM) is **10,000x faster** than a remote DB query."
+    },
+    {
+      "type": "diagram",
+      "title": "Cache-Aside Pattern (Most Common)",
+      "content": "sequenceDiagram\n    participant App\n    participant Cache as Redis Cache\n    participant DB\n    App->>Cache: GET user:123\n    alt Cache HIT\n        Cache-->>App: {user data}\n    else Cache MISS\n        Cache-->>App: null\n        App->>DB: SELECT * FROM users WHERE id=123\n        DB-->>App: {user data}\n        App->>Cache: SET user:123 {data} EX 3600\n        App-->>App: return data\n    end"
+    },
+    {
+      "type": "markdown",
+      "content": "## Caching Strategies\n\n### Cache-Aside (Lazy Loading)\n- App checks cache first; on miss, loads from DB and populates cache\n- ✓ Only caches what's actually used\n- ✗ Cache miss penalty; possible stale data\n\n### Write-Through\n- Every write goes to both cache AND DB synchronously\n- ✓ Cache always up to date\n- ✗ Write latency; caches data that may never be read\n\n### Write-Behind (Write-Back)\n- Write to cache immediately, async write to DB later\n- ✓ Fast writes\n- ✗ Data loss risk if cache crashes before flush\n\n### Read-Through\n- Cache sits in front of DB; on miss, cache loads from DB itself\n- ✓ App code stays simple\n- ✗ First request always misses"
+    },
+    {
+      "type": "diagram",
+      "title": "Write-Through vs Write-Behind",
+      "content": "graph LR\n    subgraph Write-Through\n        App1[App] -->|write| C1[Cache]\n        C1 -->|sync write| DB1[DB]\n        DB1 -->|ack| C1\n        C1 -->|ack| App1\n    end\n    subgraph Write-Behind\n        App2[App] -->|write| C2[Cache]\n        C2 -->|ack immediately| App2\n        C2 -->|async later| DB2[DB]\n    end\n    style C1 fill:#4f46e5,color:#fff\n    style C2 fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Eviction Policies\n\nWhen cache is full, old entries must be evicted:\n\n| Policy | Description | Best For |\n|---|---|---|\n| **LRU** (Least Recently Used) | Evict item not used for longest time | General purpose |\n| **LFU** (Least Frequently Used) | Evict item used least often | Skewed access patterns |\n| **TTL** (Time To Live) | Evict after fixed time | Time-sensitive data |\n| **FIFO** | Evict oldest item | Simple queue-like scenarios |\n| **Random** | Evict random item | Low overhead approximation |\n\nRedis default: `allkeys-lru`. Set per-key TTL:\n```bash\nSET user:123 {data} EX 3600   # expires in 1 hour\nEXPIRE user:123 7200          # reset TTL\nTTL user:123                  # check remaining TTL\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Thundering Herd Problem\n\nWhen a popular cache entry expires, thousands of requests simultaneously hit the DB:\n\n```\n10:00:00 — cache entry expires\n10:00:01 — 5000 requests arrive, all miss, all query DB\n           DB overwhelmed → cascading failure!\n```\n\n### Solutions:\n1. **Mutex/Lock** — first request acquires lock, others wait\n2. **Probabilistic early expiration** — randomly refresh before TTL expires\n3. **Background refresh** — async worker refreshes before expiry\n4. **Stale-while-revalidate** — serve stale data while refreshing async\n\n```java\n// Redis mutex pattern\nString lockKey = \"lock:\" + cacheKey;\nboolean acquired = redis.set(lockKey, \"1\", SetArgs.Builder.nx().ex(5));\nif (acquired) {\n    // load from DB, update cache\n    redis.del(lockKey);\n} else {\n    // Wait briefly and retry from cache\n    Thread.sleep(50);\n    return redis.get(cacheKey);\n}\n```"
+    },
+    {
+      "type": "callout",
+      "variant": "warning",
+      "title": "Cache Stampede vs Cache Penetration vs Cache Avalanche",
+      "content": "Cache Stampede (Thundering Herd): one expired key causes many DB hits. Cache Penetration: queries for keys that will never exist in cache (e.g. IDs that don't exist in DB) — use Bloom filter. Cache Avalanche: many keys expire simultaneously — use jittered TTLs (TTL + random offset)."
+    },
+    {
+      "type": "quiz",
+      "question": "What is the thundering herd problem in caching?",
+      "options": [
+        "When too many cache servers are added simultaneously",
+        "When a popular cache entry expires and many concurrent requests simultaneously query the database",
+        "When cache eviction removes entries that are still needed",
+        "When write-through cache writes overwhelm the database"
+      ],
+      "answer": 1,
+      "explanation": "The thundering herd (or cache stampede) occurs when a hot cache entry expires. All requests that were being served from cache now simultaneously hit the database, which wasn't designed to handle that sudden spike. Solutions include distributed locks, background refresh, or stale-while-revalidate patterns."
+    }
+  ]
+}

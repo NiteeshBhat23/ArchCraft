@@ -1,0 +1,46 @@
+{
+  "id": "pe-kubernetes",
+  "title": "Kubernetes for Developers",
+  "track": "platform-engineering",
+  "summary": "Core Kubernetes concepts, deployments, services, configmaps, health probes, resource limits, and rolling updates.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## Kubernetes Core Concepts\n\nKubernetes (K8s) is a container orchestration platform. Key abstractions:\n\n| Object | Purpose |\n|---|---|\n| **Pod** | Smallest deployable unit. One or more containers sharing network/storage. |\n| **Deployment** | Manages a ReplicaSet, handles rolling updates and rollbacks |\n| **Service** | Stable network endpoint for a set of Pods (load balancing) |\n| **ConfigMap** | Non-sensitive configuration data |\n| **Secret** | Sensitive data (passwords, tokens) — base64 encoded |\n| **Ingress** | HTTP routing from outside the cluster to Services |\n| **HPA** | Horizontal Pod Autoscaler — auto-scale based on CPU/custom metrics |"
+    },
+    {
+      "type": "diagram",
+      "title": "Kubernetes Architecture",
+      "content": "graph TB\n    subgraph Control Plane\n        API[API Server]\n        Sched[Scheduler]\n        CM[Controller Manager]\n        etcd[(etcd)]\n    end\n    subgraph Worker Node 1\n        K1[Kubelet]\n        P1[Pod: app-v1]\n        P2[Pod: app-v1]\n    end\n    subgraph Worker Node 2\n        K2[Kubelet]\n        P3[Pod: app-v1]\n    end\n    API --> K1\n    API --> K2\n    K1 --> P1 & P2\n    K2 --> P3\n    style API fill:#4f46e5,color:#fff\n    style etcd fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Deployment YAML\n\n```yaml\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: order-service\n  namespace: production\nspec:\n  replicas: 3\n  selector:\n    matchLabels:\n      app: order-service\n  strategy:\n    type: RollingUpdate\n    rollingUpdate:\n      maxSurge: 1        # allow 1 extra pod during update\n      maxUnavailable: 0  # never have less than desired replicas\n  template:\n    metadata:\n      labels:\n        app: order-service\n        version: v1.2.0\n    spec:\n      containers:\n      - name: order-service\n        image: registry/order-service:1.2.0\n        ports:\n        - containerPort: 8080\n        env:\n        - name: SPRING_PROFILES_ACTIVE\n          value: production\n        - name: DB_PASSWORD\n          valueFrom:\n            secretKeyRef:\n              name: db-secret\n              key: password\n        resources:\n          requests:\n            memory: \"256Mi\"\n            cpu: \"250m\"\n          limits:\n            memory: \"512Mi\"\n            cpu: \"500m\"\n        readinessProbe:\n          httpGet:\n            path: /actuator/health/readiness\n            port: 8080\n          initialDelaySeconds: 30\n          periodSeconds: 10\n        livenessProbe:\n          httpGet:\n            path: /actuator/health/liveness\n            port: 8080\n          initialDelaySeconds: 60\n          periodSeconds: 30\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Health Probes\n\n- **Readiness Probe** — \"Is this pod ready to receive traffic?\" If fails → removed from Service endpoints, no traffic sent\n- **Liveness Probe** — \"Is this pod still alive?\" If fails → container restarted\n- **Startup Probe** — \"Has the app started yet?\" Prevents liveness probe from killing slow-starting apps\n\n```yaml\n# Spring Boot Actuator integration\nmanagement:\n  endpoint:\n    health:\n      probes:\n        enabled: true  # enables /actuator/health/readiness and /liveness\n  health:\n    livenessstate:\n      enabled: true\n    readinessstate:\n      enabled: true\n```\n\n### Marking as not-ready programmatically:\n```java\n@Autowired\nAvailabilityChangeEvent<ReadinessState> readinessEvent;\n\n// During graceful shutdown or maintenance:\nAvailabilityChangeEvent.publish(eventPublisher, this, ReadinessState.REFUSING_TRAFFIC);\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "Rolling Update Flow",
+      "content": "graph LR\n    subgraph Before Update\n        P1v1[Pod v1] \n        P2v1[Pod v1]\n        P3v1[Pod v1]\n    end\n    subgraph Rolling Update\n        P1v2[Pod v2 NEW] \n        P2v1b[Pod v1]\n        P3v1b[Pod v1]\n    end\n    subgraph After Update\n        P1v2f[Pod v2]\n        P2v2f[Pod v2]\n        P3v2f[Pod v2]\n    end\n    Before_Update --> Rolling_Update\n    Rolling_Update --> After_Update\n    style P1v2 fill:#059669,color:#fff\n    style P1v2f fill:#059669,color:#fff\n    style P2v2f fill:#059669,color:#fff\n    style P3v2f fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Resource Requests and Limits\n\n```yaml\nresources:\n  requests:\n    memory: \"256Mi\"   # guaranteed minimum (scheduler uses this)\n    cpu: \"250m\"       # 0.25 CPU core guaranteed\n  limits:\n    memory: \"512Mi\"   # hard limit — OOMKilled if exceeded\n    cpu: \"500m\"       # throttled if exceeded (not killed)\n```\n\n**Critical rule**: always set both requests and limits.\n- Without requests: scheduler can't make informed placement decisions\n- Without limits: one misbehaving pod can consume all node resources\n- Memory limits are hard — exceed them = OOMKilled\n- CPU limits are soft — exceed them = throttled (not killed)\n\n## Horizontal Pod Autoscaler\n\n```yaml\napiVersion: autoscaling/v2\nkind: HorizontalPodAutoscaler\nspec:\n  scaleTargetRef:\n    name: order-service\n  minReplicas: 2\n  maxReplicas: 10\n  metrics:\n  - type: Resource\n    resource:\n      name: cpu\n      target:\n        type: Utilization\n        averageUtilization: 70  # scale when avg CPU > 70%\n```"
+    },
+    {
+      "type": "quiz",
+      "question": "What is the difference between a readiness probe and a liveness probe in Kubernetes?",
+      "options": [
+        "Readiness checks if the container started; liveness checks if it's healthy",
+        "Readiness controls traffic routing (remove from LB if fails); liveness controls restarts (restart if fails)",
+        "Liveness runs at startup; readiness runs during normal operation",
+        "They are identical — both restart the pod if they fail"
+      ],
+      "answer": 1,
+      "explanation": "Readiness probe answers 'should this pod receive traffic?' — failure removes it from Service endpoints but does NOT restart it (e.g. during startup or when dependencies are down). Liveness probe answers 'is this pod alive?' — failure causes Kubernetes to restart the container (e.g. deadlock, memory leak causing unresponsiveness)."
+    }
+  ]
+}

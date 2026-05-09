@@ -1,0 +1,54 @@
+{
+  "id": "pe-dx",
+  "title": "Developer Experience (DX)",
+  "track": "platform-engineering",
+  "summary": "Fast feedback loops, local development environments, toolchain standardization, and measuring developer productivity.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## What is Developer Experience?\n\nDeveloper Experience (DX) is the sum of all interactions a developer has with systems, tools, and processes while building software. Good DX means:\n- Fast feedback loops (local test run in seconds, not minutes)\n- Low friction to start contributing\n- Clear, discoverable tooling\n- Consistent environments (no 'works on my machine')\n- Self-service — no waiting for other teams"
+    },
+    {
+      "type": "diagram",
+      "title": "DX Feedback Loop",
+      "content": "graph LR\n    Code[Write code] -->|fast build| Test[Run tests]\n    Test -->|instant feedback| Fix[Fix issues]\n    Fix --> Code\n    Slow[Slow loop\\n20 min build] -->|context switch| Frustrated[Frustrated dev]\n    Fast[Fast loop\\n30 sec] -->|flow state| Productive[Productive dev]\n    style Fast fill:#059669,color:#fff\n    style Slow fill:#dc2626,color:#fff\n    style Productive fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Local Development Environment\n\n### Docker Compose for local dev\n```yaml\n# docker-compose.dev.yml\nservices:\n  order-service:\n    build:\n      context: .\n      target: dev        # use dev stage with hot-reload\n    volumes:\n      - ./src:/app/src   # mount source for live reload\n    environment:\n      SPRING_PROFILES_ACTIVE: dev\n      DATABASE_URL: jdbc:postgresql://postgres:5432/orders\n    depends_on:\n      - postgres\n      - kafka\n\n  postgres:\n    image: postgres:15-alpine\n    environment:\n      POSTGRES_DB: orders\n      POSTGRES_PASSWORD: dev\n    volumes:\n      - postgres_data:/var/lib/postgresql/data\n\n  kafka:\n    image: confluentinc/cp-kafka:7.5.0\n    environment:\n      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092\n\n  # One command to spin up everything:\n  # docker compose -f docker-compose.dev.yml up\n```\n\n### Tilt — Live update K8s in dev\n```python\n# Tiltfile\ndocker_build('order-service', '.', \n  live_update=[\n    sync('./src', '/app/src'),   # sync code changes instantly\n    run('mvn compile -q'),       # compile without full rebuild\n  ]\n)\nk8s_yaml('k8s/dev/')\nk8s_resource('order-service', port_forwards='8080:8080')\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Toolchain Standardization\n\n### Dev Container (devcontainer.json)\nStandardize the entire dev environment in a container — everyone has the same JDK, tools, and extensions:\n\n```json\n{\n  \"name\": \"Java 21 Dev Environment\",\n  \"image\": \"mcr.microsoft.com/devcontainers/java:21\",\n  \"features\": {\n    \"ghcr.io/devcontainers/features/docker-in-docker:2\": {},\n    \"ghcr.io/devcontainers/features/kubectl-helm-minikube:1\": {}\n  },\n  \"customizations\": {\n    \"vscode\": {\n      \"extensions\": [\n        \"vmware.vscode-spring-boot\",\n        \"redhat.java\",\n        \"ms-azuretools.vscode-docker\"\n      ],\n      \"settings\": {\n        \"java.configuration.runtimes\": [{\"name\": \"JavaSE-21\"}]\n      }\n    }\n  },\n  \"postCreateCommand\": \"mvn dependency:go-offline -q\",\n  \"forwardPorts\": [8080, 5432]\n}\n```\n\nResult: new developer opens repo in VS Code → click 'Reopen in Container' → fully configured environment in minutes, no manual setup."
+    },
+    {
+      "type": "markdown",
+      "content": "## Measuring Developer Productivity\n\n### DORA Metrics (team-level)\n- Deployment frequency\n- Lead time for changes\n- Change failure rate\n- Mean time to restore (MTTR)\n\n### SPACE Framework (individual)\n- **S**atisfaction — developer happiness/engagement\n- **P**erformance — outcome quality\n- **A**ctivity — actions and outputs\n- **C**ommunication — collaboration quality\n- **E**fficiency — flow state, context switching\n\n### Developer Survey Questions\n```\n1. How long does it take to set up a new dev environment? (< 1hr / 1-4hrs / > 4hrs)\n2. How fast is the local test suite? (< 1min / 1-5min / > 5min)\n3. How often do you wait for CI? (rarely / sometimes / always blocks me)\n4. How easy is it to deploy to staging? (1 click / few steps / need help)\n5. How often do you context-switch due to slow tools? (never / sometimes / constantly)\n```"
+    },
+    {
+      "type": "comparison",
+      "title": "DX Anti-patterns vs Best Practices",
+      "columns": ["Anti-pattern", "Better Practice"],
+      "rows": [
+        { "Anti-pattern": "30-minute local build", "Better Practice": "Incremental builds, Maven daemon, build cache" },
+        { "Anti-pattern": "Different JDK versions on each dev machine", "Better Practice": "Dev Containers or SDKMAN version pinning" },
+        { "Anti-pattern": "File a ticket to get dev DB access", "Better Practice": "Self-service DB provisioning via IDP" },
+        { "Anti-pattern": "10-step README to run locally", "Better Practice": "docker compose up — one command" },
+        { "Anti-pattern": "CI takes 45 minutes", "Better Practice": "Parallel jobs, test splitting, caching" },
+        { "Anti-pattern": "Manual environment config on each machine", "Better Practice": ".env.example + dotenv + devcontainer" }
+      ]
+    },
+    {
+      "type": "quiz",
+      "question": "What is the primary benefit of using Dev Containers for a Java development team?",
+      "options": [
+        "Dev Containers make Java applications run faster",
+        "All developers get an identical, pre-configured environment — eliminating 'works on my machine' issues and onboarding friction",
+        "Dev Containers allow Java code to run on any cloud platform",
+        "They automatically fix security vulnerabilities in dependencies"
+      ],
+      "answer": 1,
+      "explanation": "Dev Containers define the entire development environment as code (JDK version, tools, VS Code extensions, ports). Every developer and CI uses the same container image. This eliminates version mismatch bugs, reduces onboarding time from days to minutes, and ensures consistency between local development and CI."
+    }
+  ]
+}

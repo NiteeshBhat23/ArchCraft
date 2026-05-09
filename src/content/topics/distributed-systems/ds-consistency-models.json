@@ -1,0 +1,61 @@
+{
+  "id": "ds-consistency-models",
+  "title": "Consistency Models",
+  "track": "distributed-systems",
+  "summary": "Strong consistency, linearizability, sequential consistency, causal consistency, eventual consistency — with concrete examples.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## The Consistency Spectrum\n\nConsistency models define what **guarantees** a distributed system provides about the ordering and visibility of reads and writes. From strongest to weakest:\n\n1. **Linearizability** (Strict consistency)\n2. **Sequential consistency**\n3. **Causal consistency**\n4. **Eventual consistency**\n\nStronger models are easier to reason about but have higher latency and lower availability."
+    },
+    {
+      "type": "diagram",
+      "title": "Consistency Model Spectrum",
+      "content": "graph LR\n    Strong[\"Linearizability\\nStrongest\\nHighest latency\"] --> Seq[\"Sequential\\nConsistency\"]\n    Seq --> Causal[\"Causal\\nConsistency\"]\n    Causal --> Eventual[\"Eventual\\nConsistency\\nWeakest\\nLowest latency\"]\n    style Strong fill:#dc2626,color:#fff\n    style Eventual fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Linearizability\n\nThe strongest model. Operations appear **instantaneous** and respect real-time ordering — as if there's a single global timeline.\n\nIf write W completes before read R starts, R must see W's value.\n\n```\nTime ─────────────────────────────────────────▶\n\nThread 1:  [write x=1 ─────────]\n                                    [read x=1 ✓]\nThread 2:                       [read x=1 ✓]\n\n// Any read that starts AFTER the write completes must return 1\n// This is the bank account guarantee\n```\n\n**Used by**: ZooKeeper, etcd, Spanner, CockroachDB\n**Cost**: Requires coordination (Paxos, Raft) → higher latency"
+    },
+    {
+      "type": "markdown",
+      "content": "## Sequential Consistency\n\nAll operations appear in **some** sequential order consistent with each thread's program order. Doesn't require real-time ordering.\n\n```\nThread 1: write x=1, then write y=1\nThread 2: read y=1, then read x=0  ← ALLOWED in sequential consistency!\n\n// Thread 2 read y=1 (sees T1's write) but x=0 (before T1's write)\n// This is NOT allowed under linearizability\n// Sequential: T1's writes happened in order, but globally can be reordered\n```\n\n**Used by**: CPU memory models (within certain constraints)"
+    },
+    {
+      "type": "markdown",
+      "content": "## Causal Consistency\n\nOperations that are **causally related** appear in causal order. Concurrent operations (no causal relationship) can appear in any order.\n\n```\n// Causally related: B is a reply to A\nPost:  Alice posts message A\nReply: Bob replies to A with B (B causally depends on A)\n\n// Any reader who sees B must also see A\n// Concurrent posts (no causal link) can appear in any order\n```\n\n**Used by**: MongoDB (causal sessions), CockroachDB causal reads, collaborative editing (Git)\n\n**Practical example**: \"Like\" on a comment — you should see the comment before the like (causal). But two independent comments can appear in any order."
+    },
+    {
+      "type": "markdown",
+      "content": "## Eventual Consistency\n\nThe weakest model. If no new updates are made to an item, eventually all reads will return the same (latest) value. No timing guarantee.\n\n```\nTime 0: Write x=1 to Node A\nTime 0: Read x from Node B → returns 0 (stale) ← allowed!\nTime 0.5: Replication propagates\nTime 1: Read x from Node B → returns 1 (consistent)\n```\n\n**Used by**: Cassandra (default), DynamoDB (default), DNS, CDN caches\n\n### Eventual Consistency Variants:\n- **Read-your-writes**: You always see your own writes\n- **Monotonic reads**: You never see older data after seeing newer data\n- **Session consistency**: Within a session, read-your-writes + monotonic reads"
+    },
+    {
+      "type": "diagram",
+      "title": "Eventual Consistency — Replication Convergence",
+      "content": "sequenceDiagram\n    participant C as Client\n    participant N1 as Node 1\n    participant N2 as Node 2\n    C->>N1: write x=1\n    N1-->>C: ACK\n    C->>N2: read x\n    N2-->>C: x=0 (stale! not yet replicated)\n    Note over N1,N2: Async replication...\n    N1->>N2: replicate x=1\n    C->>N2: read x\n    N2-->>C: x=1 (eventually consistent)"
+    },
+    {
+      "type": "comparison",
+      "title": "Consistency Models Comparison",
+      "columns": ["Model", "Guarantee", "Latency", "Example Systems"],
+      "rows": [
+        { "Model": "Linearizability", "Guarantee": "All ops appear instantaneous, real-time ordered", "Latency": "Highest", "Example Systems": "ZooKeeper, etcd, Spanner" },
+        { "Model": "Sequential", "Guarantee": "All ops in some sequential order per thread", "Latency": "High", "Example Systems": "CPU memory models" },
+        { "Model": "Causal", "Guarantee": "Causally related ops ordered, concurrent unordered", "Latency": "Medium", "Example Systems": "MongoDB causal sessions" },
+        { "Model": "Eventual", "Guarantee": "All replicas converge given no new writes", "Latency": "Lowest", "Example Systems": "Cassandra, DynamoDB, DNS" }
+      ]
+    },
+    {
+      "type": "quiz",
+      "question": "Which consistency model guarantees that if you see a reply to a post, you will also see the original post?",
+      "options": [
+        "Eventual consistency",
+        "Sequential consistency",
+        "Causal consistency",
+        "Monotonic reads"
+      ],
+      "answer": 2,
+      "explanation": "Causal consistency guarantees that causally related operations appear in causal order. A reply causally depends on the original post — you must have seen the post to reply to it. Any reader who sees the reply is guaranteed to also see the original post. Eventual consistency makes no such guarantee — you might see the reply before the post."
+    }
+  ]
+}

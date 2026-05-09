@@ -1,0 +1,83 @@
+{
+  "id": "java-jvm-internals",
+  "title": "JVM Internals",
+  "track": "java",
+  "summary": "Deep dive into JVM architecture: class loading, bytecode execution, garbage collection algorithms, and JIT compilation.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## What is the JVM?\n\nThe Java Virtual Machine (JVM) is an abstract computing machine that enables Java bytecode to run on any platform. It provides memory management, security, and a runtime execution environment.\n\nThe JVM is NOT just an interpreter — it is a sophisticated runtime with **JIT (Just-In-Time) compilation**, adaptive optimization, and multiple garbage collection strategies."
+    },
+    {
+      "type": "diagram",
+      "title": "JVM Architecture Overview",
+      "content": "graph TD\n    A[Java Source .java] -->|javac| B[Bytecode .class]\n    B --> C[Class Loader Subsystem]\n    C --> D[Runtime Data Areas]\n    D --> E[Heap]\n    D --> F[Stack]\n    D --> G[Method Area]\n    D --> H[PC Register]\n    D --> I[Native Stack]\n    C --> J[Execution Engine]\n    J --> K[Interpreter]\n    J --> L[JIT Compiler]\n    J --> M[Garbage Collector]"
+    },
+    {
+      "type": "markdown",
+      "content": "## Class Loading Subsystem\n\nClass loading happens in **three phases**:\n\n1. **Loading** — Reads `.class` bytecode from disk, network, or JAR into memory\n2. **Linking** — Verification → Preparation → Resolution\n3. **Initialization** — Executes static initializers and static blocks\n\n### Class Loader Hierarchy\n\nJava uses **delegation model** — each loader delegates to its parent before loading itself:\n\n- **Bootstrap ClassLoader** — loads `java.lang.*`, `java.util.*` from `rt.jar`\n- **Extension/Platform ClassLoader** — loads from `$JAVA_HOME/lib/ext`\n- **Application ClassLoader** — loads from classpath\n- **Custom ClassLoaders** — your own for hot-reload, plugins, etc."
+    },
+    {
+      "type": "diagram",
+      "title": "Class Loading Delegation Model",
+      "content": "graph TB\n    App[Application ClassLoader] -->|delegates up| Ext[Extension ClassLoader]\n    Ext -->|delegates up| Boot[Bootstrap ClassLoader]\n    Boot -->|not found, back down| Ext\n    Ext -->|not found, back down| App\n    App -->|still not found| E[ClassNotFoundException]\n    style Boot fill:#4f46e5,color:#fff\n    style Ext fill:#7c3aed,color:#fff\n    style App fill:#2563eb,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## JVM Memory Areas\n\n| Area | Per-Thread? | Description |\n|---|---|---|\n| **Heap** | No (shared) | All objects and arrays live here. Subject to GC. |\n| **Method Area (Metaspace)** | No (shared) | Class metadata, static fields, constant pool |\n| **JVM Stack** | Yes | Stack frames: local vars, operand stack, return addr |\n| **PC Register** | Yes | Points to current bytecode instruction |\n| **Native Method Stack** | Yes | For native (JNI) method calls |\n\n### Stack Frames\nEvery method call creates a **stack frame** containing:\n- **Local variable array** — method parameters and local vars\n- **Operand stack** — working memory for computations\n- **Reference to runtime constant pool**"
+    },
+    {
+      "type": "diagram",
+      "title": "JVM Memory Layout",
+      "content": "graph LR\n    subgraph Shared Memory\n        Heap[\"Heap\\nYoung Gen | Old Gen\"]\n        Meta[\"Metaspace\\nClass metadata\"]\n    end\n    subgraph Per-Thread\n        S1[\"Thread 1 Stack\\nFrame3\\nFrame2\\nFrame1\"]\n        S2[\"Thread 2 Stack\\nFrame2\\nFrame1\"]\n        PC1[PC Register T1]\n        PC2[PC Register T2]\n    end\n    style Heap fill:#059669,color:#fff\n    style Meta fill:#7c3aed,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Garbage Collection\n\nThe JVM manages heap memory automatically. The heap is divided into generations based on the **generational hypothesis** — most objects die young.\n\n### Heap Generations\n\n- **Young Generation** — New objects. Subdivided into Eden + 2 Survivor spaces (S0, S1)\n- **Old Generation (Tenured)** — Long-lived objects that survived multiple GC cycles\n- **Metaspace** — Class metadata (replaced PermGen in Java 8+)\n\n### GC Algorithms\n\n| Collector | Use Case | Key Trait |\n|---|---|---|\n| **Serial GC** | Single-threaded, small heaps | Simple, stop-the-world |\n| **Parallel GC** | Throughput-first | Multi-threaded young GC |\n| **G1 GC** | Balanced latency/throughput | Region-based, predictable pauses |\n| **ZGC** | Ultra-low latency (<10ms) | Concurrent, scalable to TBs |\n| **Shenandoah** | Low latency, OpenJDK | Concurrent compaction |"
+    },
+    {
+      "type": "diagram",
+      "title": "Generational Garbage Collection Flow",
+      "content": "graph LR\n    New[New Object] --> Eden\n    Eden -->|Minor GC| S0[Survivor S0]\n    S0 -->|survive| S1[Survivor S1]\n    S1 -->|age threshold| Old[Old Gen]\n    Old -->|Major GC| Free[Memory Freed]\n    Eden -->|Full| MinorGC[Minor GC Triggered]\n    Old -->|Full| MajorGC[Major GC Triggered]\n    style Eden fill:#f59e0b,color:#fff\n    style Old fill:#dc2626,color:#fff\n    style Free fill:#059669,color:#fff"
+    },
+    {
+      "type": "callout",
+      "variant": "tip",
+      "title": "G1 GC is the Default from Java 9+",
+      "content": "G1 replaced Parallel GC as the default. It divides the heap into equal-sized regions (~1-32MB) rather than fixed-size generations. This enables more predictable pause times via the `-XX:MaxGCPauseMillis` hint."
+    },
+    {
+      "type": "markdown",
+      "content": "## JIT Compilation\n\nThe JVM starts by **interpreting** bytecode. As it detects **hot methods** (frequently called), the JIT compiler compiles them to native machine code.\n\n### Tiered Compilation (default since Java 8)\n\n- **Level 0** — Interpreter\n- **Level 1-2** — C1 (Client) compiler, fast compile, basic optimizations\n- **Level 3-4** — C2 (Server) compiler, slower compile, aggressive optimization\n\n### Key JIT Optimizations\n- **Inlining** — Replace method calls with the method body (reduces call overhead)\n- **Escape Analysis** — If object doesn't escape a method, allocate on stack instead of heap\n- **Lock Elision** — Remove locks on objects that don't escape\n- **Loop Unrolling** — Replicate loop body to reduce iterations"
+    },
+    {
+      "type": "diagram",
+      "title": "JIT Tiered Compilation",
+      "content": "graph LR\n    A[Bytecode] --> B[Level 0: Interpreter]\n    B -->|hot method detected| C[Level 1-2: C1 Compile]\n    C -->|still hot| D[Level 3-4: C2 Compile]\n    D --> E[Native Machine Code]\n    B -->|profiling data| D\n    style D fill:#4f46e5,color:#fff\n    style E fill:#059669,color:#fff"
+    },
+    {
+      "type": "quiz",
+      "question": "Which JVM memory area is shared across all threads and subject to garbage collection?",
+      "options": [
+        "JVM Stack",
+        "PC Register",
+        "Heap",
+        "Native Method Stack"
+      ],
+      "answer": 2,
+      "explanation": "The Heap is shared across all threads and is where all objects and arrays are allocated. It is the primary area managed by the garbage collector. Each thread has its own Stack, PC Register, and Native Method Stack."
+    },
+    {
+      "type": "quiz",
+      "question": "What is the primary advantage of ZGC over G1 GC?",
+      "options": [
+        "Higher throughput on single-core machines",
+        "Ultra-low pause times (<10ms) regardless of heap size",
+        "Lower memory footprint",
+        "Simpler configuration"
+      ],
+      "answer": 1,
+      "explanation": "ZGC is designed for ultra-low latency, achieving pause times under 10ms even on multi-terabyte heaps. It does this by performing most GC work concurrently while the application threads run, unlike G1 which has stop-the-world phases."
+    }
+  ]
+}

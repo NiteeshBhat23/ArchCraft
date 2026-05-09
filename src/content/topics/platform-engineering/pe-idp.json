@@ -1,0 +1,58 @@
+{
+  "id": "pe-idp",
+  "title": "Internal Developer Platform (IDP)",
+  "track": "platform-engineering",
+  "summary": "Building an IDP with Backstage, golden paths, self-service provisioning, and reducing developer cognitive load.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## What is an Internal Developer Platform?\n\nAn Internal Developer Platform (IDP) is a self-service layer built on top of your infrastructure that lets application developers create, deploy, and manage services without deep infrastructure expertise. It codifies platform best practices into reusable, discoverable tooling.\n\n**What a good IDP provides:**\n- Service templates (create a new service in minutes)\n- Self-service environment provisioning\n- Unified service catalog with ownership\n- Pre-configured CI/CD pipelines\n- Observability dashboards out of the box\n- Secrets management integration"
+    },
+    {
+      "type": "diagram",
+      "title": "IDP Layered Architecture",
+      "content": "graph TB\n    Dev[Developer] --> Portal[Developer Portal\\nBackstage]\n    Portal --> Catalog[Service Catalog]\n    Portal --> Templates[Software Templates]\n    Portal --> Workflows[Self-Service Workflows]\n    Workflows --> CI[CI/CD\\nGitHub Actions]\n    Workflows --> Infra[Infra Provisioning\\nTerraform + Crossplane]\n    Workflows --> K8s[K8s Deployment\\nHelm + ArgoCD]\n    Catalog --> Docs[TechDocs]\n    Catalog --> Deps[Dependency Graph]\n    Catalog --> OnCall[On-Call Info]\n    style Portal fill:#4f46e5,color:#fff\n    style Dev fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Backstage — The Foundation\n\nBackstage (Spotify, now CNCF) is the most widely adopted open-source IDP framework.\n\n```yaml\n# catalog-info.yaml — every service has this\napiVersion: backstage.io/v1alpha1\nkind: Component\nmetadata:\n  name: order-service\n  description: Manages the order lifecycle\n  tags: [java, spring-boot, critical]\n  annotations:\n    github.com/project-slug: org/order-service\n    backstage.io/techdocs-ref: dir:.\n    pagerduty.com/service-id: P123ABC\n    grafana/dashboard-selector: \"service=order-service\"\nspec:\n  type: service\n  lifecycle: production\n  owner: group:team-orders\n  system: ecommerce-platform\n  dependsOn:\n    - component:payment-service\n    - resource:orders-postgresql\n    - resource:orders-kafka-topic\n  providesApis:\n    - order-api-v2\n```\n\nBackstage aggregates this across all repos and gives you a single pane of glass."
+    },
+    {
+      "type": "markdown",
+      "content": "## Software Templates\n\nTemplates let developers scaffold new services from proven blueprints:\n\n```yaml\n# template.yaml\napiVersion: scaffolder.backstage.io/v1beta3\nkind: Template\nmetadata:\n  name: spring-boot-service\n  title: Spring Boot Microservice\nspec:\n  parameters:\n    - title: Service Details\n      properties:\n        serviceName:\n          type: string\n          description: Name of the service (kebab-case)\n        owner:\n          type: string\n          ui:field: OwnerPicker\n  steps:\n    - id: fetch-template\n      action: fetch:template\n      input:\n        url: ./skeleton   # git repo with template code\n        values:\n          serviceName: ${{ parameters.serviceName }}\n    - id: publish\n      action: publish:github\n      input:\n        repoUrl: github.com?owner=org&repo=${{ parameters.serviceName }}\n    - id: register\n      action: catalog:register  # auto-register in catalog\n```\n\nResult: developer fills a form → gets a GitHub repo with Spring Boot app, Dockerfile, GitHub Actions CI, Helm chart, Grafana dashboard, and catalog entry — all pre-configured."
+    },
+    {
+      "type": "diagram",
+      "title": "Golden Path — From Idea to Production",
+      "content": "graph LR\n    Dev[Developer] -->|fills form| Template[Backstage Template]\n    Template -->|creates| Repo[GitHub Repo\\nSpring Boot skeleton]\n    Repo -->|triggers| CI[CI Pipeline\\nBuild, Test, Scan]\n    CI -->|on merge to main| CD[ArgoCD\\nDeploy to staging]\n    CD -->|auto-configured| Grafana[Grafana Dashboard]\n    CD -->|auto-configured| Alerts[PagerDuty Alerts]\n    Dev -->|manual approval| Prod[Production Deploy]\n    style Template fill:#4f46e5,color:#fff\n    style Prod fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Measuring IDP Success\n\n### DORA Metrics (DevOps Research and Assessment)\n- **Deployment Frequency** — how often you deploy to production\n- **Lead Time for Changes** — commit to production time\n- **Change Failure Rate** — % deployments that cause incidents\n- **Mean Time to Restore (MTTR)** — time to recover from incident\n\n### IDP-specific metrics:\n- Time to first deployment for new service\n- % services using golden paths\n- Developer NPS / satisfaction surveys\n- Number of platform tickets vs self-service completions"
+    },
+    {
+      "type": "comparison",
+      "title": "IDP Maturity Levels",
+      "columns": ["Level", "Description", "Dev Experience"],
+      "rows": [
+        { "Level": "L0: No IDP", "Description": "Wiki pages, manual Confluence guides", "Dev Experience": "Painful, inconsistent" },
+        { "Level": "L1: Scripts + templates", "Description": "Shell scripts, cookiecutter, shared GitHub Actions", "Dev Experience": "Better, fragile" },
+        { "Level": "L2: Portal (Backstage)", "Description": "Service catalog, basic templates, CI/CD integration", "Dev Experience": "Good" },
+        { "Level": "L3: Full self-service", "Description": "Self-service infra, environments, DB provisioning", "Dev Experience": "Excellent" },
+        { "Level": "L4: Intelligent platform", "Description": "Cost insights, automated remediation, AI assistance", "Dev Experience": "World-class" }
+      ]
+    },
+    {
+      "type": "quiz",
+      "question": "What is the primary metric that indicates an IDP is successful?",
+      "options": [
+        "Number of services registered in the catalog",
+        "Reduction in platform team ticket volume and improvement in developer DORA metrics",
+        "Number of Backstage plugins installed",
+        "Percentage of services using Kubernetes"
+      ],
+      "answer": 1,
+      "explanation": "A successful IDP moves developers from filing tickets to self-service. Key signals: platform ticket volume decreases, DORA metrics improve (faster deployments, lower lead time), and developer satisfaction scores increase. The catalog size or plugin count are vanity metrics — what matters is whether developers can ship faster with fewer blockers."
+    }
+  ]
+}

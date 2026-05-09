@@ -1,0 +1,54 @@
+{
+  "id": "arch-api-gateway",
+  "title": "API Gateway Pattern",
+  "track": "architecture-patterns",
+  "summary": "API gateway responsibilities, BFF pattern, Spring Cloud Gateway, rate limiting, authentication at the edge.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## What is an API Gateway?\n\nAn API Gateway is the **single entry point** for all clients. It handles cross-cutting concerns at the edge — auth, rate limiting, routing, SSL termination, request aggregation — so individual services don't need to.\n\nWithout a gateway:\n```\nClient knows about 10+ service URLs\nEach service implements auth separately\nClients handle service discovery\nCORS, SSL managed per service\n```\n\nWith a gateway:\n```\nClient calls one URL\nGateway handles auth, routing, rate limiting, SSL\nServices focus on business logic only\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "API Gateway Architecture",
+      "content": "graph LR\n    Mobile[Mobile App] --> GW[API Gateway]\n    Web[Web App] --> GW\n    Partner[Partner API] --> GW\n    GW -->|/api/orders| OS[Order Service]\n    GW -->|/api/users| US[User Service]\n    GW -->|/api/products| PS[Product Service]\n    GW -->|/api/payments| PAY[Payment Service]\n    GW --- Auth[Auth Filter]\n    GW --- RL[Rate Limiter]\n    GW --- LB[Load Balancer]\n    GW --- Log[Access Log]\n    style GW fill:#4f46e5,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Spring Cloud Gateway\n\n```yaml\n# application.yml\nspring:\n  cloud:\n    gateway:\n      routes:\n        - id: order-service\n          uri: lb://order-service     # load-balanced via Eureka/K8s\n          predicates:\n            - Path=/api/orders/**\n          filters:\n            - StripPrefix=1           # remove /api prefix\n            - name: RequestRateLimiter\n              args:\n                redis-rate-limiter.replenishRate: 100\n                redis-rate-limiter.burstCapacity: 200\n            - name: CircuitBreaker\n              args:\n                name: orderService\n                fallbackUri: forward:/fallback/orders\n\n        - id: user-service\n          uri: lb://user-service\n          predicates:\n            - Path=/api/users/**\n          filters:\n            - AddRequestHeader=X-Gateway-Source, api-gateway\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "Request Processing Pipeline in Spring Cloud Gateway",
+      "content": "graph LR\n    Req[Request] --> P[Predicate\\nPath matching]\n    P -->|match| F1[Pre-filters\\nAuth, Rate limit, Headers]\n    F1 --> Proxy[Proxy to service]\n    Proxy --> F2[Post-filters\\nResponse transform, Headers]\n    F2 --> Resp[Response]\n    P -->|no match| 404[404 Not Found]\n    style P fill:#4f46e5,color:#fff\n    style F1 fill:#d97706,color:#fff\n    style F2 fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Backend for Frontend (BFF) Pattern\n\nDifferent clients have different needs — a mobile app needs smaller payloads, a web app needs richer data. The BFF pattern creates a **dedicated gateway per client type**:\n\n```\nMobile BFF     → optimized for mobile: small payloads, offline support\nWeb BFF        → optimized for web: richer data, server-side aggregation\nPartner BFF    → rate limited, versioned, API-key authenticated\nAdmin BFF      → wider access, internal tooling\n```\n\n```java\n// BFF aggregates multiple service calls for mobile\n@GetMapping(\"/mobile/home\")\npublic MobileHomePage getHome(Authentication auth) {\n    // Fan-out in parallel\n    CompletableFuture<UserSummary> user = userService.getSummaryAsync(auth.getName());\n    CompletableFuture<List<OrderSummary>> orders = orderService.getRecentAsync(auth.getName());\n    CompletableFuture<List<ProductSummary>> products = productService.getFeaturedAsync();\n    \n    // Wait for all and compose response\n    return MobileHomePage.of(\n        user.join(),\n        orders.join(),\n        products.join()\n    );\n    // One request from mobile → 3 parallel service calls\n}\n```"
+    },
+    {
+      "type": "comparison",
+      "title": "API Gateway vs Service Mesh",
+      "columns": ["Aspect", "API Gateway", "Service Mesh"],
+      "rows": [
+        { "Aspect": "Traffic handled", "API Gateway": "North-south (external→internal)", "Service Mesh": "East-west (service→service)" },
+        { "Aspect": "Auth", "API Gateway": "Client authentication (JWT, API keys)", "Service Mesh": "Service identity (mTLS)" },
+        { "Aspect": "Rate limiting", "API Gateway": "Per client/user", "Service Mesh": "Per service" },
+        { "Aspect": "Protocol translation", "API Gateway": "REST→gRPC, WebSocket→HTTP", "Service Mesh": "Transparent proxying" },
+        { "Aspect": "Visibility", "API Gateway": "Business-level metrics", "Service Mesh": "Infrastructure-level metrics" }
+      ]
+    },
+    {
+      "type": "quiz",
+      "question": "What problem does the Backend for Frontend (BFF) pattern solve?",
+      "options": [
+        "It reduces the number of microservices needed",
+        "It provides client-specific APIs optimized for each client type (mobile, web, partner) instead of one generic API for all",
+        "It moves backend logic to the frontend to reduce server load",
+        "It provides a fallback for when backend services are unavailable"
+      ],
+      "answer": 1,
+      "explanation": "A single generic API must satisfy all clients, leading to over-fetching for some and multiple round-trips for others. BFF creates a dedicated gateway per client type. The mobile BFF returns small payloads optimized for bandwidth. The web BFF aggregates richer data. Each BFF is owned by the team that owns the frontend."
+    }
+  ]
+}

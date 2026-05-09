@@ -1,0 +1,54 @@
+{
+  "id": "pe-cloud-native",
+  "title": "Cloud-Native Patterns",
+  "track": "platform-engineering",
+  "summary": "12-Factor App, cloud-native design principles, FinOps cost optimisation, and building cloud-agnostic services.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## The 12-Factor App\n\nThe 12-Factor methodology (Heroku, 2011) defines best practices for building cloud-native, scalable, maintainable SaaS applications.\n\n| Factor | Principle |\n|---|---|\n| **I. Codebase** | One codebase tracked in VCS, many deploys |\n| **II. Dependencies** | Explicitly declare and isolate dependencies |\n| **III. Config** | Store config in environment (not code) |\n| **IV. Backing services** | Treat backing services (DB, cache) as attached resources |\n| **V. Build/Release/Run** | Strictly separate build, release, and run stages |\n| **VI. Processes** | Execute app as stateless processes |\n| **VII. Port binding** | Export services via port binding |\n| **VIII. Concurrency** | Scale out via process model |\n| **IX. Disposability** | Fast startup, graceful shutdown |\n| **X. Dev/prod parity** | Keep dev, staging, prod as similar as possible |\n| **XI. Logs** | Treat logs as event streams |\n| **XII. Admin processes** | Run admin tasks as one-off processes |"
+    },
+    {
+      "type": "diagram",
+      "title": "12-Factor Config & Backing Services",
+      "content": "graph LR\n    subgraph Bad - Config in Code\n        App1[App] -->|hardcoded| DB1[\"jdbc:postgresql://prod-db:5432\"]\n    end\n    subgraph Good - Config from Environment\n        App2[App] -->|ENV: DATABASE_URL| DB2[Any DB]\n        App2 -->|ENV: REDIS_URL| Cache[Any Cache]\n        App2 -->|ENV: KAFKA_BROKERS| Queue[Any Queue]\n    end\n    style App2 fill:#059669,color:#fff\n    style App1 fill:#dc2626,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Graceful Shutdown\n\nCloud-native apps must handle `SIGTERM` gracefully — finishing in-flight requests, closing DB connections, deregistering from service discovery:\n\n```java\n// Spring Boot handles this automatically with:\n# application.properties\nserver.shutdown=graceful\nspring.lifecycle.timeout-per-shutdown-phase=30s\n\n# Kubernetes must send SIGTERM before SIGKILL\n# spec.terminationGracePeriodSeconds: 60  (default 30)\n```\n\n### Kubernetes pod termination sequence:\n```\n1. Pod set to Terminating\n2. K8s removes from Service endpoints (no new traffic)\n3. K8s sends SIGTERM to container\n4. App stops accepting new requests, finishes in-flight ones\n5. After terminationGracePeriodSeconds → SIGKILL (if still running)\n```\n\n**Gap problem**: steps 2 and 3 happen concurrently — new requests might still arrive after SIGTERM. Solution: add a pre-stop sleep hook:\n\n```yaml\nlifecycle:\n  preStop:\n    exec:\n      command: [\"sleep\", \"5\"]  # wait for LB to drain\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## FinOps — Cloud Cost Optimisation\n\nFinOps is the practice of bringing financial accountability to cloud spending. Key practices:\n\n### Right-sizing\n```bash\n# Kubernetes: check actual usage vs requested\nkubectl top pods -n production\n# If actual: cpu=50m, memory=128Mi\n# But request: cpu=500m, memory=512Mi\n# → You're over-provisioning and over-paying by 10x\n```\n\n### Spot/Preemptible Instances\n- AWS Spot, GCP Preemptible: 60-80% cheaper than on-demand\n- Can be terminated at any time → only for stateless workloads\n- Use node affinity to schedule batch/non-critical workloads on spot\n\n### Cluster Autoscaler\n```yaml\n# Scale down unused nodes automatically\ncluster-autoscaler:\n  scale-down-utilization-threshold: 0.5  # node <50% utilized → scale down\n  scale-down-delay-after-add: 10m\n  scale-down-unneeded-time: 10m\n```\n\n### KEDA — Event-driven Autoscaling\nScale pods to **zero** when idle, scale up from Kafka lag, queue depth, etc.:\n\n```yaml\napiVersion: keda.sh/v1alpha1\nkind: ScaledObject\nspec:\n  scaleTargetRef:\n    name: order-processor\n  minReplicaCount: 0    # scale to zero!\n  maxReplicaCount: 50\n  triggers:\n  - type: kafka\n    metadata:\n      topic: orders\n      lagThreshold: \"100\"  # 1 pod per 100 messages lag\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "Cloud Cost Optimisation Layers",
+      "content": "graph TD\n    Savings[Cost Savings Opportunities]\n    Savings --> RightSize[Right-sizing\\nMatch requests to actual usage]\n    Savings --> Spot[Spot Instances\\n60-80% cheaper for stateless]\n    Savings --> ScaleZero[Scale-to-Zero\\nKEDA for batch workloads]\n    Savings --> Reserved[Reserved Instances\\n30-60% discount for committed use]\n    Savings --> Storage[Storage Tiering\\nMove old data to cheaper tiers]\n    RightSize --> VPA[Vertical Pod Autoscaler\\nAuto-adjust resource requests]\n    style Savings fill:#4f46e5,color:#fff\n    style ScaleZero fill:#059669,color:#fff"
+    },
+    {
+      "type": "comparison",
+      "title": "Cloud Deployment Models",
+      "columns": ["Model", "Control", "Cost", "Complexity", "Best For"],
+      "rows": [
+        { "Model": "On-premises", "Control": "Full", "Cost": "High CapEx", "Complexity": "Highest", "Best For": "Regulated industries, data sovereignty" },
+        { "Model": "IaaS (VMs)", "Control": "OS and up", "Cost": "OpEx", "Complexity": "High", "Best For": "Lift-and-shift migrations" },
+        { "Model": "CaaS (Kubernetes)", "Control": "App and config", "Cost": "Medium OpEx", "Complexity": "Medium", "Best For": "Microservices at scale" },
+        { "Model": "PaaS (Cloud Run, Fargate)", "Control": "App only", "Cost": "Pay-per-use", "Complexity": "Low", "Best For": "Simple services, startups" },
+        { "Model": "FaaS (Lambda)", "Control": "Function only", "Cost": "Lowest (idle=free)", "Complexity": "Lowest", "Best For": "Event-driven, low-traffic" }
+      ]
+    },
+    {
+      "type": "quiz",
+      "question": "Why should a pre-stop sleep hook be added to Kubernetes pods?",
+      "options": [
+        "To give the application time to save its state before shutdown",
+        "To compensate for the race condition where load balancer endpoint removal and SIGTERM happen concurrently, preventing traffic to a shutting-down pod",
+        "To allow Kubernetes to complete health checks before termination",
+        "To ensure database connections are properly closed"
+      ],
+      "answer": 1,
+      "explanation": "Kubernetes removes the pod from Service endpoints AND sends SIGTERM at the same time. The load balancer may take a few seconds to propagate the endpoint removal. Without a pre-stop sleep, the pod can receive new requests after it starts shutting down. A 5-second sleep gives the LB time to drain before the app starts rejecting connections."
+    }
+  ]
+}

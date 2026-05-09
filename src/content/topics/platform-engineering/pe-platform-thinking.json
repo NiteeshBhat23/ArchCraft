@@ -1,0 +1,64 @@
+{
+  "id": "pe-platform-thinking",
+  "title": "Platform Thinking",
+  "track": "platform-engineering",
+  "summary": "Internal developer platforms, golden paths, platform as a product, reducing cognitive load, and team topologies.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## What is Platform Engineering?\n\nPlatform engineering builds **Internal Developer Platforms (IDPs)** — self-service tools that let application teams deploy, operate, and monitor services without deep infrastructure knowledge.\n\nThe goal: **reduce cognitive load** on development teams so they can focus on business logic, not infrastructure plumbing."
+    },
+    {
+      "type": "diagram",
+      "title": "Internal Developer Platform",
+      "content": "graph TB\n    DevTeam[Development Teams] -->|self-service| IDP[Internal Developer Platform]\n    IDP --> CI[CI/CD Pipelines\\n GitHub Actions templates]\n    IDP --> K8s[Kubernetes Deployment\\nHelm charts, operators]\n    IDP --> Obs[Observability\\nPre-configured dashboards]\n    IDP --> Sec[Security\\nOPA policies, secret injection]\n    IDP --> DB[Database Provisioning\\nSelf-service DB creation]\n    IDP --> Docs[Service Catalog\\nBackstage]\n    style IDP fill:#4f46e5,color:#fff\n    style DevTeam fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Golden Paths\n\nA **golden path** is the opinionated, supported way to build and deploy services at your organization. It encodes best practices into templates and tooling so developers \"fall into the pit of success.\"\n\n```\nGolden Path for a new Spring Boot microservice:\n1. Use project template: github.com/org/service-template\n   → Pre-configured: actuator, security, observability, Dockerfile, GitHub Actions\n2. Register in service catalog (Backstage)\n3. Provision infra via GitOps (raise PR to infra repo)\n4. Deploy: git push main → auto-deployed to staging → manual prod\n\nDeveloper from idea to first deployment in < 1 hour\nWith all best practices (security, observability) included by default\n```\n\n### Why golden paths, not guardrails?\nGuardrails say \"you can't do X.\" Golden paths say \"here's the easy right way.\" Teams can deviate, but the default is correct."
+    },
+    {
+      "type": "markdown",
+      "content": "## Team Topologies\n\nMatthew Skelton & Manuel Pais (2019) defined four fundamental team types:\n\n| Team Type | Purpose | Example |\n|---|---|---|\n| **Stream-aligned** | Delivers a product/service end-to-end | Order Service team |\n| **Platform** | Builds the internal platform | Platform Engineering team |\n| **Enabling** | Helps other teams adopt practices | DevOps enablement team |\n| **Complicated-subsystem** | Owns a complex component | ML platform team |\n\n### Interaction Modes:\n- **Collaboration** — work closely together for a period (temporarily)\n- **X-as-a-Service** — platform team provides self-service capability\n- **Facilitating** — enabling team coaches stream-aligned team"
+    },
+    {
+      "type": "diagram",
+      "title": "Team Topologies Interaction",
+      "content": "graph LR\n    Platform[Platform Team] -->|X-as-a-Service| SA1[Stream Team: Orders]\n    Platform -->|X-as-a-Service| SA2[Stream Team: Payments]\n    Platform -->|X-as-a-Service| SA3[Stream Team: Users]\n    Enable[Enabling Team\\nDevOps/Security] -->|facilitating| SA1\n    Enable -->|facilitating| SA2\n    CS[Complex Subsystem\\nML Team] -->|X-as-a-Service| SA1\n    style Platform fill:#4f46e5,color:#fff\n    style Enable fill:#059669,color:#fff\n    style CS fill:#7c3aed,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Backstage — Service Catalog\n\nBackstage (Spotify, now CNCF) is an open-source platform for building internal developer portals:\n\n```yaml\n# catalog-info.yaml in every service repo\napiVersion: backstage.io/v1alpha1\nkind: Component\nmetadata:\n  name: order-service\n  description: Manages order lifecycle\n  annotations:\n    github.com/project-slug: org/order-service\n    backstage.io/techdocs-ref: dir:.\n    pagerduty.com/service-id: P123ABC\nspec:\n  type: service\n  lifecycle: production\n  owner: team-orders\n  system: ecommerce\n  dependsOn:\n    - component:payment-service\n    - resource:orders-postgresql\n  providesApis:\n    - order-api\n```\n\nBackstage provides:\n- Service catalog with ownership\n- API documentation\n- TechDocs (markdown docs)\n- Software templates (create new service in UI)\n- Plugins: CI/CD status, on-call, cost, security"
+    },
+    {
+      "type": "comparison",
+      "title": "Platform Maturity Levels",
+      "columns": ["Level", "Characteristics", "Developer Experience"],
+      "rows": [
+        { "Level": "L0: No platform", "Characteristics": "Each team manages own infra, no standards", "Developer Experience": "High cognitive load, inconsistent" },
+        { "Level": "L1: Shared scripts", "Characteristics": "Wiki pages, bash scripts, Confluence guides", "Developer Experience": "Better, but manual, fragile" },
+        { "Level": "L2: Standardized tooling", "Characteristics": "Golden path templates, CI/CD pipelines", "Developer Experience": "Good for happy path" },
+        { "Level": "L3: Self-service platform", "Characteristics": "Service catalog, self-service provisioning", "Developer Experience": "Excellent, low friction" },
+        { "Level": "L4: Platform as Product", "Characteristics": "Dedicated platform team, SLOs for platform", "Developer Experience": "Best — platform has SLAs" }
+      ]
+    },
+    {
+      "type": "callout",
+      "variant": "tip",
+      "title": "Treat your platform as a product",
+      "content": "Platform engineering teams should treat internal developers as customers. Measure developer experience (DORA metrics, onboarding time, deployment frequency). Run internal NPS surveys. Prioritize self-service over 'raise a ticket.' The platform succeeds when developers choose to use it because it makes their lives easier, not because they're forced to."
+    },
+    {
+      "type": "quiz",
+      "question": "What is the primary difference between a 'golden path' and a 'guardrail' in platform engineering?",
+      "options": [
+        "Golden paths are mandatory; guardrails are optional",
+        "Golden paths provide the easy, correct way to do things; guardrails enforce restrictions. Golden paths work with developers, guardrails work against them.",
+        "Guardrails are for security; golden paths are for performance",
+        "They are different names for the same concept"
+      ],
+      "answer": 1,
+      "explanation": "Guardrails say 'you cannot do X' and require enforcement mechanisms. Golden paths say 'here is the easiest, supported way to do X correctly.' Developers can still deviate from golden paths (they're opinionated, not mandatory), but the default path bakes in best practices. Teams adopt golden paths because they reduce friction, not because they're forced to."
+    }
+  ]
+}

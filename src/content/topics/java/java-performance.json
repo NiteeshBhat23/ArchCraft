@@ -1,0 +1,65 @@
+{
+  "id": "java-performance",
+  "title": "Performance Profiling & JVM Tuning",
+  "track": "java",
+  "summary": "JVM flags, GC tuning, heap analysis, async-profiler, JFR, and systematic performance investigation.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## Performance Investigation Process\n\nNever guess at performance problems. Follow a systematic approach:\n\n1. **Measure** — establish baselines with real workloads\n2. **Profile** — identify the bottleneck (CPU, memory, GC, I/O, locks)\n3. **Analyze** — understand root cause\n4. **Fix** — apply targeted change\n5. **Verify** — confirm improvement, check no regression"
+    },
+    {
+      "type": "diagram",
+      "title": "Performance Investigation Flow",
+      "content": "graph TD\n    A[Slow Application] --> B{What's slow?}\n    B -->|CPU 100%| C[CPU Profiler\\nasync-profiler, JFR]\n    B -->|High GC| D[GC Analysis\\n-Xlog:gc, GCViewer]\n    B -->|High Memory| E[Heap Dump\\njmap, Eclipse MAT]\n    B -->|Thread contention| F[Thread Dump\\njstack, VisualVM]\n    B -->|Slow I/O| G[I/O Profiler\\nAPM tools]\n    C --> H[Fix hotspot]\n    D --> I[Tune GC or fix leak]\n    E --> J[Fix memory leak]\n    F --> K[Fix lock contention]\n    style A fill:#dc2626,color:#fff\n    style H fill:#059669,color:#fff\n    style I fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Java Flight Recorder (JFR)\n\nJFR is a low-overhead profiling tool built into the JVM. Overhead is typically **<2%** in production.\n\n```bash\n# Enable JFR on startup\njava -XX:StartFlightRecording=duration=60s,filename=app.jfr MyApp\n\n# Or dynamically via jcmd\njcmd <pid> JFR.start duration=60s filename=app.jfr\njcmd <pid> JFR.stop\n\n# Analyze with JDK Mission Control (JMC)\njmc &\n```\n\nJFR captures: CPU usage, GC events, thread states, memory allocation, I/O, JIT compilation, exceptions."
+    },
+    {
+      "type": "markdown",
+      "content": "## async-profiler\n\nasync-profiler samples stack traces using OS signals — works with both CPU and allocation profiling with minimal bias.\n\n```bash\n# CPU profiling for 30 seconds\n./profiler.sh -d 30 -f flamegraph.html <pid>\n\n# Allocation profiling\n./profiler.sh -e alloc -d 30 -f alloc.html <pid>\n\n# Wall-clock profiling (includes I/O wait)\n./profiler.sh -e wall -d 30 -f wall.html <pid>\n```\n\nFlame graphs show call stacks: **wide = slow**, **tall = deep**. Look for wide plateaus."
+    },
+    {
+      "type": "markdown",
+      "content": "## GC Tuning\n\n```bash\n# Print GC logs (Java 9+)\n-Xlog:gc*:file=gc.log:time,uptime,level,tags\n\n# Heap sizing\n-Xms4g -Xmx4g          # Set min=max to avoid resize pauses\n-XX:NewRatio=2          # Old:Young ratio (default 2 = 1/3 young)\n-XX:MaxMetaspaceSize=256m\n\n# G1 GC tuning\n-XX:+UseG1GC\n-XX:MaxGCPauseMillis=200   # Pause time goal (not guarantee)\n-XX:G1HeapRegionSize=16m   # Larger for big heaps\n\n# ZGC for low latency\n-XX:+UseZGC\n-XX:+ZGenerational         # Java 21+: generational ZGC\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "Heap Dump Analysis Workflow",
+      "content": "graph LR\n    A[OOM or Memory Leak] -->|capture| B[Heap Dump\\n-XX:+HeapDumpOnOutOfMemoryError]\n    B -->|open in| C[Eclipse MAT\\nor VisualVM]\n    C --> D[Dominator Tree\\nlargest objects]\n    C --> E[Leak Suspects Report]\n    D --> F[Find retention path]\n    E --> G[Root cause identified]\n    style A fill:#dc2626,color:#fff\n    style G fill:#059669,color:#fff"
+    },
+    {
+      "type": "comparison",
+      "title": "JVM Tuning Flags Quick Reference",
+      "columns": ["Flag", "Purpose", "Default"],
+      "rows": [
+        { "Flag": "-Xms / -Xmx", "Purpose": "Initial / max heap size", "Default": "256m / 1/4 RAM" },
+        { "Flag": "-XX:+UseG1GC", "Purpose": "Use G1 garbage collector", "Default": "On (Java 9+)" },
+        { "Flag": "-XX:MaxGCPauseMillis", "Purpose": "G1 pause time goal", "Default": "200ms" },
+        { "Flag": "-XX:+PrintCompilation", "Purpose": "Log JIT compilations", "Default": "Off" },
+        { "Flag": "-XX:+HeapDumpOnOutOfMemoryError", "Purpose": "Auto heap dump on OOM", "Default": "Off" },
+        { "Flag": "-XX:+UseStringDeduplication", "Purpose": "Deduplicate String objects in heap", "Default": "Off" }
+      ]
+    },
+    {
+      "type": "callout",
+      "variant": "tip",
+      "title": "Set -Xms == -Xmx in production",
+      "content": "Setting initial heap equal to max heap prevents the JVM from spending time growing the heap during peak load. This eliminates GC pauses caused by heap resizing and makes memory usage more predictable."
+    },
+    {
+      "type": "quiz",
+      "question": "What does a wide plateau in a CPU flame graph indicate?",
+      "options": [
+        "Many different methods are being called",
+        "The method at that level is consuming significant CPU time",
+        "The call stack is very deep",
+        "The JIT compiler is not optimizing that code"
+      ],
+      "answer": 1,
+      "explanation": "In a flame graph, width represents the proportion of time spent. A wide plateau means that specific method (or its callees) is taking a large percentage of total CPU time — that's your hotspot to optimize."
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "id": "java-completable-future",
+  "title": "CompletableFuture & Reactive",
+  "track": "java",
+  "summary": "Async programming with CompletableFuture, chaining, combining, error handling, and reactive patterns.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## Why Async?\n\nBlocking threads waiting on I/O wastes CPU resources. In a service with 1000 concurrent requests each waiting 100ms for a DB call, you need 1000 threads with blocking I/O — but only a handful with async.\n\n`CompletableFuture` (Java 8+) provides a **non-blocking, composable** API for async computation."
+    },
+    {
+      "type": "diagram",
+      "title": "Blocking vs Non-Blocking I/O",
+      "content": "graph LR\n    subgraph Blocking\n        T1[Thread 1] -->|waits| DB1[DB Query]\n        T2[Thread 2] -->|waits| DB2[DB Query]\n        T3[Thread 3] -->|waits| DB3[DB Query]\n    end\n    subgraph Non-Blocking\n        T4[1 Thread] -->|async| DB4[DB Query]\n        T4 -->|async| DB5[DB Query]\n        T4 -->|async| DB6[DB Query]\n    end\n    style T4 fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## CompletableFuture Basics\n\n```java\n// Start async computation\nCompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {\n    return fetchUserFromDB(userId); // runs in ForkJoinPool\n});\n\n// Chain transformations\nCompletableFuture<String> result = future\n    .thenApply(user -> user.toUpperCase())      // transform result\n    .thenCompose(name -> fetchOrders(name))      // flat-map (async)\n    .thenAccept(orders -> System.out.println(orders)) // consume\n    .exceptionally(ex -> { log(ex); return null; });  // handle error\n```\n\n### Key methods:\n| Method | Purpose |\n|---|---|\n| `supplyAsync(Supplier)` | Start async task with result |\n| `runAsync(Runnable)` | Start async task, no result |\n| `thenApply(Function)` | Transform result (like map) |\n| `thenCompose(Function)` | Chain async steps (like flatMap) |\n| `thenCombine(CF, BiFunction)` | Combine two futures |\n| `allOf(CFs...)` | Wait for all to complete |\n| `anyOf(CFs...)` | Complete when first finishes |"
+    },
+    {
+      "type": "diagram",
+      "title": "CompletableFuture Pipeline",
+      "content": "graph LR\n    A[supplyAsync\\nfetch user] -->|thenApply| B[transform\\nuser → name]\n    B -->|thenCompose| C[supplyAsync\\nfetch orders]\n    C -->|thenCombine| D[combine with\\nfetch inventory]\n    D -->|thenAccept| E[process result]\n    A -->|exceptionally| F[handle error]\n    C -->|exceptionally| F\n    style A fill:#4f46e5,color:#fff\n    style E fill:#059669,color:#fff\n    style F fill:#dc2626,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Combining Futures\n\n```java\n// Run two tasks in parallel and combine results\nCompletableFuture<User> userFuture = fetchUser(id);\nCompletableFuture<List<Order>> orderFuture = fetchOrders(id);\n\nCompletableFuture<UserProfile> profile = userFuture\n    .thenCombine(orderFuture, (user, orders) -> \n        new UserProfile(user, orders));\n\n// Wait for ALL of N futures\nCompletableFuture<Void> all = CompletableFuture.allOf(\n    future1, future2, future3);\n\n// Collect results\nList<String> results = Stream.of(future1, future2, future3)\n    .map(CompletableFuture::join)\n    .collect(Collectors.toList());\n```"
+    },
+    {
+      "type": "callout",
+      "variant": "warning",
+      "title": "Don't call .get() or .join() in reactive chains",
+      "content": "Calling .get() or .join() blocks the calling thread, defeating the purpose of async. Only call them at the very end of a pipeline, or use thenAccept/thenRun to consume results asynchronously."
+    },
+    {
+      "type": "markdown",
+      "content": "## Custom Thread Pool\n\nBy default, `CompletableFuture` uses the common `ForkJoinPool`. For I/O-heavy operations, use a dedicated thread pool:\n\n```java\nExecutor ioPool = Executors.newFixedThreadPool(50);\n\nCompletableFuture.supplyAsync(() -> httpCall(), ioPool)\n    .thenApplyAsync(result -> transform(result), ioPool);\n```\n\n## Error Handling\n\n```java\nfuture\n    .thenApply(this::riskyOp)\n    .exceptionally(ex -> defaultValue)       // recover from error\n    .handle((result, ex) -> {                // handle both cases\n        if (ex != null) return fallback;\n        return result;\n    });\n```"
+    },
+    {
+      "type": "quiz",
+      "question": "What is the difference between thenApply() and thenCompose()?",
+      "options": [
+        "thenApply runs synchronously, thenCompose runs asynchronously",
+        "thenApply transforms a result (like map), thenCompose chains another async future (like flatMap)",
+        "thenCompose is for error handling, thenApply is for success",
+        "They are identical, just different naming conventions"
+      ],
+      "answer": 1,
+      "explanation": "thenApply() is like map — it transforms a value T to U synchronously. thenCompose() is like flatMap — it takes a value T and returns a new CompletableFuture<U>, enabling chaining of async operations without nesting."
+    }
+  ]
+}

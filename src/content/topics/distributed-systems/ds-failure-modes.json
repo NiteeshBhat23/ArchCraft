@@ -1,0 +1,63 @@
+{
+  "id": "ds-failure-modes",
+  "title": "Failure Modes & Resilience",
+  "track": "distributed-systems",
+  "summary": "Split brain, cascading failures, bulkhead pattern, circuit breaker, retry strategies, and designing for failure.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## Expect Failure\n\nIn distributed systems, failure is not an exception — it's the norm. Hardware fails, networks partition, services time out. Resilient systems are designed assuming failure will happen.\n\n**Key failures to design for:**\n- Node crashes\n- Network partitions (split brain)\n- Slow (not failed) dependencies\n- Cascading failures\n- Memory/CPU pressure"
+    },
+    {
+      "type": "markdown",
+      "content": "## Split Brain\n\nSplit brain occurs when a cluster loses network connectivity and **each partition believes it is the primary** — both accept writes, leading to data divergence.\n\n```\nNormal: Leader ←──────── Follower\nSplit:  Leader ✗✗✗✗✗✗✗✗ Follower\n        Both think they're leader!\n        Both accept writes!\n        Data diverges!\n```\n\n**Prevention:**\n- **Quorum-based systems** (Raft, ZooKeeper) — only the majority partition can elect a leader\n- **STONITH (Shoot The Other Node In The Head)** — forcibly kill the node in the minority partition\n- **Fencing tokens** — monotonically increasing tokens; old leader's writes are rejected by storage"
+    },
+    {
+      "type": "diagram",
+      "title": "Split Brain and Quorum Prevention",
+      "content": "graph TB\n    subgraph Split Brain - No Quorum\n        P1[Partition 1\\nNode 1 + 2] \n        P2[Partition 2\\nNode 3 + 4 + 5]\n        P1 -->|I am leader!| W1[Accept writes]\n        P2 -->|I am leader!| W2[Accept writes]\n        W1 & W2 --> Conflict[DATA CONFLICT!]\n    end\n    subgraph Quorum Prevention N=5\n        QP1[2 nodes\\nminority] -->|cannot reach quorum| X[REFUSE writes]\n        QP2[3 nodes\\nmajority] -->|has quorum| OK[Accept writes SAFELY]\n    end\n    style Conflict fill:#dc2626,color:#fff\n    style X fill:#dc2626,color:#fff\n    style OK fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Cascading Failures\n\nA cascading failure occurs when one service's failure causes dependent services to fail, spreading across the system.\n\n```\nService C is slow (DB under load)\n→ Service B's threads block waiting for C\n→ Service B's thread pool exhausts\n→ Service A can't get responses from B\n→ Service A's threads block\n→ Entire system down\n```\n\n### Prevention strategies:\n- **Timeouts** — never wait indefinitely; fail fast\n- **Circuit Breaker** — stop calling a failed service\n- **Bulkhead** — isolate failures to a pool\n- **Backpressure** — slow down when overwhelmed"
+    },
+    {
+      "type": "diagram",
+      "title": "Circuit Breaker State Machine",
+      "content": "stateDiagram-v2\n    [*] --> Closed: Start\n    Closed --> Open: Error threshold exceeded\n    Open --> HalfOpen: Timeout expires (try again)\n    HalfOpen --> Closed: Test request succeeds\n    HalfOpen --> Open: Test request fails\n    Closed: CLOSED\\nNormal operation\\nRequests pass through\n    Open: OPEN\\nFast fail\\nReturn fallback immediately\n    HalfOpen: HALF-OPEN\\nAllow 1 test request"
+    },
+    {
+      "type": "markdown",
+      "content": "## Bulkhead Pattern\n\nThe Bulkhead pattern isolates failures by using **separate thread pools or connection pools** for different services — like bulkheads in a ship that prevent one flooded compartment from sinking the whole vessel.\n\n```java\n// Without bulkhead — one slow service starves all others\nExecutor sharedPool = Executors.newFixedThreadPool(50);\n// ServiceA, ServiceB, ServiceC all share 50 threads\n// If ServiceC is slow → takes all 50 threads → A and B starve\n\n// With bulkhead — isolated pools\nExecutor serviceAPool = Executors.newFixedThreadPool(15);\nExecutor serviceBPool = Executors.newFixedThreadPool(15);\nExecutor serviceCPool = Executors.newFixedThreadPool(20);\n// ServiceC slow → only its 20 threads affected → A and B still run\n```\n\nWith Resilience4j:\n```java\nBulkhead bulkhead = Bulkhead.of(\"paymentService\", config -> config\n    .maxConcurrentCalls(20)\n    .maxWaitDuration(Duration.ofMillis(100)));\n\nSupplier<String> decorated = Bulkhead.decorateSupplier(bulkhead, \n    () -> paymentService.charge(amount));\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Retry Strategies\n\nRetries help with transient failures, but naive retries can make things worse.\n\n```java\n// Bad: immediate retry storm\nfor (int i = 0; i < 3; i++) {\n    try { return callService(); }\n    catch (Exception e) { /* retry immediately */ }\n}\n\n// Good: exponential backoff with jitter\nint baseDelayMs = 100;\nfor (int attempt = 0; attempt < 3; attempt++) {\n    try { return callService(); }\n    catch (TransientException e) {\n        long delay = baseDelayMs * (1L << attempt); // 100, 200, 400ms\n        long jitter = (long)(Math.random() * delay); // ±50% random\n        Thread.sleep(delay + jitter);\n    }\n}\n```\n\n**Jitter** prevents retry storms where all clients retry simultaneously after an outage."
+    },
+    {
+      "type": "comparison",
+      "title": "Resilience Patterns Summary",
+      "columns": ["Pattern", "Problem Solved", "How"],
+      "rows": [
+        { "Pattern": "Timeout", "Problem Solved": "Slow dependencies", "How": "Fail after N ms, don't wait forever" },
+        { "Pattern": "Circuit Breaker", "Problem Solved": "Cascading failures", "How": "Fast-fail when error rate is high" },
+        { "Pattern": "Retry + Backoff", "Problem Solved": "Transient failures", "How": "Retry with exponential delay + jitter" },
+        { "Pattern": "Bulkhead", "Problem Solved": "Resource exhaustion", "How": "Isolate thread pools per dependency" },
+        { "Pattern": "Rate Limiter", "Problem Solved": "Overload", "How": "Cap requests per second" },
+        { "Pattern": "Fallback", "Problem Solved": "Service unavailable", "How": "Return cached/default data" }
+      ]
+    },
+    {
+      "type": "quiz",
+      "question": "What is the main purpose of adding jitter to retry delays?",
+      "options": [
+        "To make retries faster on average",
+        "To prevent all clients from retrying simultaneously (retry storm) after an outage",
+        "To comply with rate limiting requirements",
+        "To reduce memory usage during retries"
+      ],
+      "answer": 1,
+      "explanation": "Without jitter, all clients that failed at the same time will retry at the same time (e.g. all retry after exactly 100ms). This creates a synchronized retry storm that can overwhelm the recovering service. Jitter adds randomness to spread retries over time, giving the service a chance to recover gradually."
+    }
+  ]
+}

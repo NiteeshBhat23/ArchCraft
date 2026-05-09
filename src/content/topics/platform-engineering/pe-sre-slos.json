@@ -1,0 +1,64 @@
+{
+  "id": "pe-sre-slos",
+  "title": "SRE, SLOs & Error Budgets",
+  "track": "platform-engineering",
+  "summary": "SLIs, SLOs, SLAs, error budgets, toil reduction, and building a reliability culture in engineering teams.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## SRE Fundamentals\n\nSite Reliability Engineering (SRE, Google 2003) applies software engineering principles to operations. The core insight: **reliability is a feature** and should be treated with the same rigor as other features.\n\n### The Reliability Hierarchy:\n- **SLI** (Service Level Indicator) — a measurable metric: request success rate, latency p99\n- **SLO** (Service Level Objective) — a target for an SLI: 99.9% of requests succeed\n- **SLA** (Service Level Agreement) — a contractual commitment to customers: if we miss SLO, you get a refund\n- **Error Budget** — how much unreliability is allowed: 0.1% of requests can fail = 43.2 min/month"
+    },
+    {
+      "type": "diagram",
+      "title": "SLI → SLO → Error Budget",
+      "content": "graph LR\n    SLI[\"SLI: Measure\\nSuccess rate = 99.95%\"] --> SLO[\"SLO: Target\\n99.9% success\"]\n    SLO --> EB[\"Error Budget\\n0.1% = 43.8 min/month\"]\n    EB --> Used[\"Used: 12 min\\n(28% of budget)\"]\n    EB --> Remaining[\"Remaining: 31.8 min\\n(72% of budget)\"]\n    Remaining -->|budget healthy| Release[Release new features]\n    Used -->|budget exhausted| Freeze[Feature freeze\\nfocus on reliability]\n    style SLO fill:#4f46e5,color:#fff\n    style Release fill:#059669,color:#fff\n    style Freeze fill:#dc2626,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Defining Good SLIs\n\nNot all metrics make good SLIs. Good SLIs are:\n- **Meaningful to users** — measures what users care about\n- **Measurable** — can be captured from actual traffic\n- **Actionable** — you can improve it\n\n### Common SLI types:\n\n| Type | Metric | Example |\n|---|---|---|\n| **Availability** | % successful requests | 99.9% of HTTP requests return 2xx/3xx |\n| **Latency** | % requests below threshold | 95% of requests < 200ms |\n| **Quality** | % requests with correct result | 99% of search queries return relevant results |\n| **Freshness** | % data within age threshold | 99% of records updated within 60s |\n| **Throughput** | % time throughput above minimum | 99% of minutes processing > 1000 req/s |\n\n```yaml\n# Prometheus SLI recording rules\ngroups:\n- name: sli\n  rules:\n  - record: sli:request_availability:ratio_rate5m\n    expr: |\n      sum(rate(http_requests_total{status!~\"5..\"}[5m]))\n      /\n      sum(rate(http_requests_total[5m]))\n  \n  - record: sli:request_latency:ratio_rate5m\n    expr: |\n      sum(rate(http_request_duration_seconds_bucket{le=\"0.2\"}[5m]))\n      /\n      sum(rate(http_request_duration_seconds_count[5m]))\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Error Budgets\n\nThe error budget is the allowed unreliability for a given period:\n\n```\nSLO: 99.9% availability\nError budget: 100% - 99.9% = 0.1%\n\nPer month (30 days = 43,200 minutes):\nError budget = 0.001 × 43,200 = 43.2 minutes of downtime allowed\n\nPer year:\nError budget = 0.001 × 525,600 = 525.6 minutes ≈ 8.77 hours\n```\n\n### Error Budget Policy\nThe error budget governs the pace of development:\n\n- **Budget healthy (>50% remaining)** → launch new features, experiment\n- **Budget at risk (25-50% remaining)** → slow down, add reliability work\n- **Budget exhausted (<0%)** → feature freeze, all hands on reliability\n\nThis creates alignment: product and engineering both care about reliability because outages consume the shared error budget that enables feature launches."
+    },
+    {
+      "type": "markdown",
+      "content": "## Toil Reduction\n\nToil is manual, repetitive, automatable work that doesn't provide lasting value. SRE principle: **toil should be <50% of SRE work**.\n\nExamples of toil:\n- Manually running deployment scripts\n- Responding to the same alert by running the same runbook every time\n- Manually rotating credentials\n- Manually scaling services during traffic spikes\n\n### Toil vs Engineering Work\n```\nToil: Run deployment script every Friday\nEngineering: Automate the deployment script → runs on every merge\n\nToil: Wake up at 2am to restart the service when OOM\nEngineering: Fix the memory leak, add HPA, configure proper limits\n\nToil: Manually approve access requests\nEngineering: Implement self-service with approval workflow\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "SRE Virtuous Cycle",
+      "content": "graph LR\n    Monitor[Monitor SLIs] --> EB[Track Error Budget]\n    EB -->|budget healthy| Features[Ship Features]\n    EB -->|budget at risk| Reliability[Invest in Reliability]\n    Reliability --> AutoRemediate[Automate remediation]\n    AutoRemediate --> ReduceToil[Reduce Toil]\n    ReduceToil --> Monitor\n    Features --> Monitor\n    style EB fill:#4f46e5,color:#fff\n    style Reliability fill:#d97706,color:#fff\n    style Features fill:#059669,color:#fff"
+    },
+    {
+      "type": "comparison",
+      "title": "Nines of Availability",
+      "columns": ["SLO", "Uptime", "Monthly Downtime", "Yearly Downtime"],
+      "rows": [
+        { "SLO": "99% (two nines)", "Uptime": "99%", "Monthly Downtime": "7.2 hours", "Yearly Downtime": "3.65 days" },
+        { "SLO": "99.9% (three nines)", "Uptime": "99.9%", "Monthly Downtime": "43.2 min", "Yearly Downtime": "8.77 hours" },
+        { "SLO": "99.95%", "Uptime": "99.95%", "Monthly Downtime": "21.6 min", "Yearly Downtime": "4.38 hours" },
+        { "SLO": "99.99% (four nines)", "Uptime": "99.99%", "Monthly Downtime": "4.32 min", "Yearly Downtime": "52.6 min" },
+        { "SLO": "99.999% (five nines)", "Uptime": "99.999%", "Monthly Downtime": "25.9 sec", "Yearly Downtime": "5.26 min" }
+      ]
+    },
+    {
+      "type": "callout",
+      "variant": "tip",
+      "title": "Set realistic SLOs — not aspirational ones",
+      "content": "Setting 99.999% SLO when you actually achieve 99.9% creates constant alert fatigue and a permanently exhausted error budget. Measure your current baseline, set your SLO slightly below it, then improve over time. Users often don't need five nines — understand what level of reliability they actually care about."
+    },
+    {
+      "type": "quiz",
+      "question": "What is the primary purpose of an error budget in SRE?",
+      "options": [
+        "To track how much money is spent on infrastructure failures",
+        "To create a shared incentive between product and engineering — reliability investment is balanced against feature velocity",
+        "To measure how many errors occurred in a given period",
+        "To set alerts when error rates exceed acceptable thresholds"
+      ],
+      "answer": 1,
+      "explanation": "The error budget creates alignment: product teams want to ship features, SRE teams want reliability. The error budget quantifies how much unreliability is acceptable. When the budget is healthy, features ship freely. When it's exhausted, features pause until reliability is restored. Both teams are incentivized to maintain reliability — outages cost them all feature velocity."
+    }
+  ]
+}

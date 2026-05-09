@@ -1,0 +1,46 @@
+{
+  "id": "sd-load-balancing",
+  "title": "Load Balancing",
+  "track": "system-design",
+  "summary": "L4 vs L7 load balancing, algorithms, consistent hashing, health checks, and sticky sessions.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## What is Load Balancing?\n\nA load balancer distributes incoming traffic across multiple backend servers to maximize throughput, minimize latency, and avoid overloading any single server.\n\n### Two layers:\n- **L4 (Transport Layer)** — routes based on IP address and TCP/UDP port. Fast but dumb — no content awareness.\n- **L7 (Application Layer)** — routes based on HTTP content: URL path, headers, cookies. Slower but powerful."
+    },
+    {
+      "type": "diagram",
+      "title": "L4 vs L7 Load Balancing",
+      "content": "graph TB\n    subgraph L4 Load Balancer\n        C1[Client] -->|TCP connection| L4[L4 LB\\nIP:Port routing]\n        L4 --> S1[Server 1]\n        L4 --> S2[Server 2]\n        Note1[Sees: IP, Port\\nNot: URL, Headers]\n    end\n    subgraph L7 Load Balancer\n        C2[Client] -->|HTTP request| L7[L7 LB\\nContent-based routing]\n        L7 -->|/api/*| API[API Servers]\n        L7 -->|/static/*| CDN[CDN / Static]\n        L7 -->|/ws/*| WS[WebSocket Servers]\n    end\n    style L7 fill:#4f46e5,color:#fff\n    style L4 fill:#d97706,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Load Balancing Algorithms\n\n| Algorithm | How it works | Best for |\n|---|---|---|\n| **Round Robin** | Each server in turn | Equal capacity servers |\n| **Weighted Round Robin** | More traffic to more powerful servers | Mixed capacity |\n| **Least Connections** | Routes to server with fewest active connections | Variable request duration |\n| **IP Hash** | Hash client IP → same server | Sticky sessions |\n| **Random** | Random server selection | Simple, low overhead |\n| **Resource Based** | Routes based on server CPU/memory | Adaptive workloads |"
+    },
+    {
+      "type": "diagram",
+      "title": "Consistent Hashing Ring",
+      "content": "graph TD\n    Ring([\"Hash Ring\\n0 ... 2^32\"])\n    Ring --> N1[Node A\\nat position 100]\n    Ring --> N2[Node B\\nat position 200]\n    Ring --> N3[Node C\\nat position 300]\n    Key1[\"Key 'user:1'\\nhash=150\"] -->|goes to next node clockwise| N2\n    Key2[\"Key 'user:2'\\nhash=250\"] -->|goes to next node clockwise| N3\n    Key3[\"Key 'user:3'\\nhash=350\"] -->|wraps around| N1\n    style Ring fill:#4f46e5,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Consistent Hashing\n\nRegular hashing: `server = hash(key) % N` — when N changes (add/remove server), almost ALL keys remap.\n\nConsistent hashing: place servers and keys on a virtual ring. Each key maps to the next server clockwise. Adding/removing a server only remaps keys from its **immediate neighbor** — minimizing cache invalidation.\n\n**Virtual nodes** (vnodes): each physical server occupies multiple positions on the ring for better distribution.\n\n```\nWithout consistent hashing: add 1 server → 75% of cache keys remap\nWith consistent hashing:    add 1 server → ~1/N of cache keys remap\n```\n\nUsed by: Cassandra, DynamoDB, Redis Cluster, CDN routing."
+    },
+    {
+      "type": "markdown",
+      "content": "## Health Checks\n\nLoad balancers continuously check server health:\n\n- **Passive health check** — observe actual traffic; mark down after N failures\n- **Active health check** — ping `/health` endpoint every 5s; mark down on timeout\n\n```nginx\nupstream backend {\n    server app1:8080;\n    server app2:8080;\n    server app3:8080;\n    \n    keepalive 32;  # persistent connections\n}\n\n# Active health check (nginx plus)\nhealth_check interval=5s fails=3 passes=2 uri=/actuator/health;\n```\n\n## Sticky Sessions\n\nSome applications need requests from the same user to always reach the same server (e.g. legacy session apps). Use **cookie-based affinity**:\n\n```\nLB sets cookie: SERVERID=app1\nSubsequent requests include cookie → LB routes to app1\n```\n\n⚠️ Sticky sessions defeat load balancing when one user has heavy traffic. Prefer stateless design."
+    },
+    {
+      "type": "quiz",
+      "question": "What problem does consistent hashing solve compared to regular modulo hashing?",
+      "options": [
+        "It distributes load more evenly across servers",
+        "It minimizes the number of keys that need to be remapped when servers are added or removed",
+        "It prevents hot spots in the hash ring",
+        "It allows servers to communicate without a central coordinator"
+      ],
+      "answer": 1,
+      "explanation": "With regular modulo hashing (key % N), changing N (adding/removing a server) causes almost all keys to remap to different servers — catastrophic for caches. Consistent hashing places both keys and servers on a ring so only ~1/N of keys need remapping when a server is added or removed."
+    }
+  ]
+}

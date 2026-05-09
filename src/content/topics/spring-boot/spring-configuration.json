@@ -1,0 +1,52 @@
+{
+  "id": "spring-configuration",
+  "title": "Configuration Management",
+  "track": "spring-boot",
+  "summary": "Profiles, externalized configuration, Spring Cloud Config Server, Vault integration, and configuration best practices.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## Externalized Configuration\n\nSpring Boot loads configuration from multiple sources with a strict **priority order** (higher overrides lower):\n\n1. Command-line arguments (`--server.port=9090`)\n2. `SPRING_APPLICATION_JSON` environment variable\n3. OS environment variables\n4. `application-{profile}.properties` outside jar\n5. `application.properties` outside jar\n6. `application-{profile}.properties` inside jar\n7. `application.properties` inside jar\n8. `@PropertySource` annotations\n9. Default properties"
+    },
+    {
+      "type": "diagram",
+      "title": "Configuration Priority Order",
+      "content": "graph TD\n    CLI[\"1. CLI args\\n--server.port=9090\"] --> ENV\n    ENV[\"2-3. Env vars\\nSERVER_PORT=9090\"] --> EXT\n    EXT[\"4-5. External files\\napplication.properties (outside jar)\"] --> INT\n    INT[\"6-7. Internal files\\napplication.properties (inside jar)\"] --> DEF\n    DEF[\"8-9. Defaults\\n@PropertySource, hardcoded\"]\n    style CLI fill:#4f46e5,color:#fff\n    style DEF fill:#6b7280,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Profiles\n\nProfiles activate different configuration sets per environment:\n\n```yaml\n# application.yml — base config\napp:\n  name: MyApp\n\n---\n# application-dev.yml\nspring:\n  config:\n    activate:\n      on-profile: dev\nspring:\n  datasource:\n    url: jdbc:h2:mem:devdb\n\n---\n# application-prod.yml\nspring:\n  config:\n    activate:\n      on-profile: prod\nspring:\n  datasource:\n    url: ${DB_URL}  # from environment\n```\n\nActivate via:\n```bash\n# Environment variable (recommended for containers)\nSPRING_PROFILES_ACTIVE=prod java -jar app.jar\n\n# JVM argument\njava -Dspring.profiles.active=prod -jar app.jar\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## @ConfigurationProperties\n\nBind a whole group of properties to a typed class:\n\n```java\n@ConfigurationProperties(prefix = \"app.payment\")\n@Validated\npublic class PaymentProperties {\n    @NotNull\n    private String apiUrl;\n    \n    @Min(1) @Max(60)\n    private int timeoutSeconds = 30;\n    \n    private List<String> supportedCurrencies = List.of(\"USD\", \"EUR\");\n    \n    // getters/setters\n}\n\n// Usage\n@Service\npublic class PaymentService {\n    public PaymentService(PaymentProperties props) {\n        this.client = new HttpClient(props.getApiUrl(), props.getTimeoutSeconds());\n    }\n}\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Spring Cloud Config Server\n\nFor microservices, centralize configuration in a Config Server backed by Git:\n\n```yaml\n# Config Server application.yml\nspring:\n  cloud:\n    config:\n      server:\n        git:\n          uri: https://github.com/org/config-repo\n          default-label: main\n```\n\n```yaml\n# Client application.yml\nspring:\n  config:\n    import: configserver:http://config-server:8888\n  application:\n    name: order-service  # loads order-service.yml from git repo\n```\n\nRefresh config at runtime without restart:\n```java\n@RefreshScope  // bean re-created when /actuator/refresh is called\n@RestController\npublic class ConfigController {\n    @Value(\"${feature.enabled}\")\n    private boolean featureEnabled;\n}\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "Spring Cloud Config Architecture",
+      "content": "graph LR\n    Git[Git Repo\\nconfig files] -->|pull| CS[Config Server]\n    CS -->|serve config| S1[Order Service]\n    CS -->|serve config| S2[Payment Service]\n    CS -->|serve config| S3[User Service]\n    Bus[Spring Cloud Bus\\nRabbitMQ/Kafka] -->|refresh event| S1\n    Bus --> S2\n    Bus --> S3\n    Admin[Admin] -->|POST /actuator/busrefresh| CS\n    CS --> Bus\n    style CS fill:#4f46e5,color:#fff\n    style Git fill:#059669,color:#fff"
+    },
+    {
+      "type": "callout",
+      "variant": "warning",
+      "title": "Never commit secrets to config repositories",
+      "content": "Use Spring Cloud Vault or AWS Secrets Manager for sensitive values. Config Server can integrate with Vault: spring.cloud.config.server.vault.* properties let Config Server fetch secrets from Vault and serve them to clients."
+    },
+    {
+      "type": "quiz",
+      "question": "What is the highest-priority configuration source in Spring Boot?",
+      "options": [
+        "application.properties inside the JAR",
+        "Environment variables",
+        "Command-line arguments",
+        "@PropertySource annotations"
+      ],
+      "answer": 2,
+      "explanation": "Command-line arguments (--property=value) have the highest priority in Spring Boot's property resolution order. This makes it easy to override any configuration at deployment time without changing files."
+    }
+  ]
+}

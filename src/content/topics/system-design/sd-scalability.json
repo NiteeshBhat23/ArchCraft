@@ -1,0 +1,60 @@
+{
+  "id": "sd-scalability",
+  "title": "Scalability Fundamentals",
+  "track": "system-design",
+  "summary": "Horizontal vs vertical scaling, stateless design, replication, partitioning, and the key principles behind scalable systems.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## Scalability Defined\n\nScalability is the ability of a system to **handle increased load** without degrading performance. Load can mean: requests per second, concurrent users, data volume, or message throughput.\n\n### Two approaches to scaling:\n- **Vertical scaling (Scale Up)** — add more power to existing machines (more CPU, RAM, faster disk)\n- **Horizontal scaling (Scale Out)** — add more machines to distribute load"
+    },
+    {
+      "type": "diagram",
+      "title": "Vertical vs Horizontal Scaling",
+      "content": "graph LR\n    subgraph Vertical Scale Up\n        S1[Server\\n4 CPU 16GB] -->|upgrade| S2[Server\\n32 CPU 256GB]\n        Note1[Single point of failure!\\nHard ceiling]\n    end\n    subgraph Horizontal Scale Out\n        LB[Load Balancer]\n        LB --> N1[Node 1]\n        LB --> N2[Node 2]\n        LB --> N3[Node 3]\n        LB --> NN[Node N...]\n    end\n    style S2 fill:#d97706,color:#fff\n    style LB fill:#4f46e5,color:#fff"
+    },
+    {
+      "type": "comparison",
+      "title": "Vertical vs Horizontal Scaling",
+      "columns": ["Aspect", "Vertical (Scale Up)", "Horizontal (Scale Out)"],
+      "rows": [
+        { "Aspect": "Cost", "Vertical (Scale Up)": "Exponential at top end", "Horizontal (Scale Out)": "Linear with commodity hardware" },
+        { "Aspect": "Limit", "Vertical (Scale Up)": "Hard ceiling (biggest machine)", "Horizontal (Scale Out)": "Virtually unlimited" },
+        { "Aspect": "Complexity", "Vertical (Scale Up)": "Low (single node)", "Horizontal (Scale Out)": "High (distributed state)" },
+        { "Aspect": "Availability", "Vertical (Scale Up)": "Single point of failure", "Horizontal (Scale Out)": "Resilient (redundancy)" },
+        { "Aspect": "Best for", "Vertical (Scale Up)": "Databases (initially)", "Horizontal (Scale Out)": "Web/app layer, caches" }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "## Stateless Design\n\nThe key to horizontal scalability is making your application **stateless** — no request-local state stored in memory on the server.\n\n**Problem with stateful servers:**\n```\nUser logs in → Session stored in Server A memory\nNext request → Load balancer routes to Server B\nServer B has no session → User is logged out!\n```\n\n**Stateless solution:**\n```\nUser logs in → JWT token issued, stored in browser\nNext request → JWT attached → ANY server can validate it\nAll servers are identical → scale freely\n```\n\n### Externalizing state:\n- **Session data** → Redis, cookie/JWT\n- **File uploads** → S3/object storage\n- **Cache** → Redis cluster, Memcached\n- **DB connections** → Connection pooling (PgBouncer)"
+    },
+    {
+      "type": "diagram",
+      "title": "Stateless Architecture",
+      "content": "graph TB\n    Client --> LB[Load Balancer]\n    LB --> A1[App Server 1]\n    LB --> A2[App Server 2]\n    LB --> A3[App Server 3]\n    A1 --> Redis[(Redis\\nSessions/Cache)]\n    A2 --> Redis\n    A3 --> Redis\n    A1 --> DB[(PostgreSQL\\nPrimary)]\n    A2 --> DB\n    A3 --> DB\n    style LB fill:#4f46e5,color:#fff\n    style Redis fill:#dc2626,color:#fff\n    style DB fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Key Scalability Patterns\n\n### Read Replicas\nScale read-heavy workloads by replicating data to read replicas:\n```\nWrites → Primary DB\nReads  → Read Replica 1, 2, 3 (round-robin or closest)\n```\n\n### Caching\nCache frequently-read, rarely-changed data at multiple layers:\n- **CDN cache** — static assets, public API responses at edge\n- **Application cache** — Redis for computed results, sessions\n- **DB query cache** — memoize expensive queries\n\n### Async Processing\nOffload slow operations to queues:\n```\nHTTP Request → validate → enqueue → return 202 Accepted\nWorker → dequeue → process slowly → update DB\n```"
+    },
+    {
+      "type": "callout",
+      "variant": "tip",
+      "title": "Start simple, scale when needed",
+      "content": "Don't over-engineer scalability from day one. A single well-tuned PostgreSQL instance can handle thousands of requests/second. Add replicas, caches, and queues when you have measured evidence you need them."
+    },
+    {
+      "type": "quiz",
+      "question": "Why is stateless application design critical for horizontal scaling?",
+      "options": [
+        "Stateless apps use less memory per request",
+        "Any server can handle any request without needing session data from a specific server",
+        "Stateless apps don't need load balancers",
+        "Stateless apps are faster because they don't store anything"
+      ],
+      "answer": 1,
+      "explanation": "With stateless design, no server holds user-specific in-memory state. Any request can be routed to any server by the load balancer. This enables adding/removing servers freely, auto-scaling, and surviving individual server failures without losing user sessions."
+    }
+  ]
+}

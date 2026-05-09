@@ -1,0 +1,65 @@
+{
+  "id": "ds-distributed-transactions",
+  "title": "Distributed Transactions",
+  "track": "distributed-systems",
+  "summary": "Two-phase commit (2PC), three-phase commit (3PC), Saga pattern for microservices, and compensating transactions.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## The Problem: Transactions Across Services\n\nIn a monolith, a single DB transaction keeps things consistent. In microservices, an operation may span multiple services with separate databases.\n\n```\nPlace Order:\n1. Order Service: create order record\n2. Inventory Service: reserve items\n3. Payment Service: charge card\n\nIf Payment fails after Inventory reserved — you must undo the reservation!\nYou cannot use a single DB transaction across three services.\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Two-Phase Commit (2PC)\n\nA coordinator orchestrates all participants in two phases:\n\n**Phase 1 — Prepare:**\n- Coordinator sends `PREPARE` to all participants\n- Each participant locks resources, writes to redo log, responds `YES` or `NO`\n\n**Phase 2 — Commit/Abort:**\n- If ALL replied YES → coordinator sends `COMMIT` to all\n- If ANY replied NO → coordinator sends `ABORT` to all"
+    },
+    {
+      "type": "diagram",
+      "title": "Two-Phase Commit (2PC)",
+      "content": "sequenceDiagram\n    participant C as Coordinator\n    participant P1 as Order Service\n    participant P2 as Inventory Service\n    participant P3 as Payment Service\n    Note over C: Phase 1 — PREPARE\n    C->>P1: PREPARE\n    C->>P2: PREPARE\n    C->>P3: PREPARE\n    P1-->>C: YES (locked)\n    P2-->>C: YES (locked)\n    P3-->>C: YES (locked)\n    Note over C: All YES → Phase 2 — COMMIT\n    C->>P1: COMMIT\n    C->>P2: COMMIT\n    C->>P3: COMMIT\n    P1-->>C: ACK\n    P2-->>C: ACK\n    P3-->>C: ACK"
+    },
+    {
+      "type": "callout",
+      "variant": "warning",
+      "title": "2PC Problems",
+      "content": "2PC is blocking: if the coordinator crashes after sending PREPARE but before sending COMMIT, all participants are stuck holding locks indefinitely. Also, it's synchronous — all participants must be available simultaneously, reducing availability. For these reasons, 2PC is rarely used in modern microservices."
+    },
+    {
+      "type": "markdown",
+      "content": "## Saga Pattern\n\nThe Saga pattern breaks a long-running transaction into a sequence of local transactions. Each step publishes an event/message that triggers the next step. If a step fails, **compensating transactions** undo previous steps.\n\n### Two implementation styles:\n\n**Choreography** — each service publishes events and listens for others; no central coordinator\n**Orchestration** — a central Saga orchestrator tells each service what to do"
+    },
+    {
+      "type": "diagram",
+      "title": "Saga Choreography — Order Placement",
+      "content": "sequenceDiagram\n    participant OS as Order Service\n    participant IS as Inventory Service\n    participant PS as Payment Service\n    participant ES as Email Service\n    OS->>OS: Create Order (PENDING)\n    OS->>IS: OrderCreated event\n    IS->>IS: Reserve Inventory\n    IS->>PS: InventoryReserved event\n    PS->>PS: Charge Payment\n    PS->>ES: PaymentCompleted event\n    ES->>ES: Send confirmation\n    ES->>OS: OrderConfirmed event\n    OS->>OS: Update Order (CONFIRMED)\n    Note over PS: If charge fails:\n    PS->>IS: PaymentFailed event\n    IS->>IS: Release Inventory (compensate)"
+    },
+    {
+      "type": "diagram",
+      "title": "Saga Orchestration",
+      "content": "sequenceDiagram\n    participant Orch as Saga Orchestrator\n    participant OS as Order Service\n    participant IS as Inventory Service\n    participant PS as Payment Service\n    Orch->>OS: createOrder\n    OS-->>Orch: orderCreated\n    Orch->>IS: reserveInventory\n    IS-->>Orch: inventoryReserved\n    Orch->>PS: chargePayment\n    PS-->>Orch: paymentFailed!\n    Orch->>IS: cancelReservation (compensate)\n    IS-->>Orch: reservationCancelled\n    Orch->>OS: cancelOrder (compensate)\n    OS-->>Orch: orderCancelled"
+    },
+    {
+      "type": "comparison",
+      "title": "Choreography vs Orchestration",
+      "columns": ["Aspect", "Choreography", "Orchestration"],
+      "rows": [
+        { "Aspect": "Coordinator", "Choreography": "None — services react to events", "Orchestration": "Central saga orchestrator" },
+        { "Aspect": "Coupling", "Choreography": "Loosely coupled (events)", "Orchestration": "Services coupled to orchestrator" },
+        { "Aspect": "Visibility", "Choreography": "Hard to see full flow", "Orchestration": "Easy to track saga state" },
+        { "Aspect": "Testing", "Choreography": "Complex (distributed flow)", "Orchestration": "Easier (test orchestrator)" },
+        { "Aspect": "Best for", "Choreography": "Simple flows, few steps", "Orchestration": "Complex flows, many compensations" }
+      ]
+    },
+    {
+      "type": "quiz",
+      "question": "What is a compensating transaction in the Saga pattern?",
+      "options": [
+        "A transaction that compensates for slow performance",
+        "An action that undoes a previously completed step when a later step fails",
+        "A read-only transaction that verifies data consistency",
+        "A retry mechanism for failed transactions"
+      ],
+      "answer": 1,
+      "explanation": "In a Saga, if step N fails, the system must undo all previously completed steps (1 through N-1) using compensating transactions. For example, if payment fails after inventory was reserved, the compensating transaction releases the inventory reservation. Compensating transactions must be idempotent."
+    }
+  ]
+}

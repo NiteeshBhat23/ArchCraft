@@ -1,0 +1,54 @@
+{
+  "id": "sd-rate-limiting",
+  "title": "Rate Limiting",
+  "track": "system-design",
+  "summary": "Token bucket, sliding window, fixed window, leaky bucket algorithms, and distributed rate limiting with Redis.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## Why Rate Limit?\n\nRate limiting protects your API from:\n- **DDoS attacks** — prevent traffic floods\n- **Abuse** — stop one user consuming all resources\n- **Cost control** — cap expensive operations per user\n- **Fair usage** — ensure fair access for all users"
+    },
+    {
+      "type": "markdown",
+      "content": "## Rate Limiting Algorithms\n\n### Fixed Window Counter\n- Count requests per time window (e.g. 100 req/min)\n- Reset counter at window boundary\n- ✗ **Edge spike problem**: 100 req at 0:59 + 100 req at 1:01 = 200 req in 2 seconds!\n\n### Sliding Window Log\n- Track timestamp of each request in a log\n- Count requests in the last N seconds\n- ✓ Accurate, no edge spike\n- ✗ Memory intensive (stores every timestamp)\n\n### Token Bucket\n- Bucket holds tokens (capacity = burst limit)\n- Tokens added at fixed rate (refill rate = sustained limit)\n- Each request consumes 1 token\n- ✓ Allows controlled bursting\n- ✓ Most common algorithm\n\n### Leaky Bucket\n- Requests enter a queue (bucket)\n- Processed at fixed rate (leak rate)\n- Excess requests dropped or queued\n- ✓ Smooths out traffic\n- ✗ No bursting allowed"
+    },
+    {
+      "type": "diagram",
+      "title": "Token Bucket Algorithm",
+      "content": "graph LR\n    Refill[Token Refill\\n10 tokens/second] -->|add tokens| Bucket[Token Bucket\\ncapacity: 100]\n    Request[Incoming Request] -->|consume 1 token| Bucket\n    Bucket -->|token available| Allow[✓ Allow Request]\n    Bucket -->|empty| Deny[✗ 429 Too Many Requests]\n    style Allow fill:#059669,color:#fff\n    style Deny fill:#dc2626,color:#fff"
+    },
+    {
+      "type": "diagram",
+      "title": "Fixed Window Edge Spike Problem",
+      "content": "graph LR\n    W1[Window 1\\n0:00 - 1:00\\n100 requests allowed]\n    W2[Window 2\\n1:00 - 2:00\\n100 requests allowed]\n    Spike[100 requests at 0:59\\n+ 100 requests at 1:01\\n= 200 requests in 2 seconds!]\n    W1 --> Spike\n    W2 --> Spike\n    style Spike fill:#dc2626,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Distributed Rate Limiting with Redis\n\nSingle-server rate limiting is simple. In a cluster, you need a **shared counter**.\n\n### Redis Counter (Fixed Window)\n```lua\n-- Atomic Lua script runs in Redis\nlocal key = KEYS[1]  -- e.g. \"rate:user:123:minute:1234567\"\nlocal limit = tonumber(ARGV[1])\nlocal current = redis.call('INCR', key)\nif current == 1 then\n    redis.call('EXPIRE', key, 60)  -- set TTL on first request\nend\nif current > limit then\n    return 0  -- denied\nend\nreturn 1  -- allowed\n```\n\n### Redis Sliding Window (sorted set)\n```lua\nlocal key = KEYS[1]\nlocal now = tonumber(ARGV[1])  -- current timestamp ms\nlocal window = tonumber(ARGV[2])  -- window size ms\nlocal limit = tonumber(ARGV[3])\n\n-- Remove old entries\nredis.call('ZREMRANGEBYSCORE', key, 0, now - window)\n\nlocal count = redis.call('ZCARD', key)\nif count >= limit then\n    return 0  -- denied\nend\nredis.call('ZADD', key, now, now)  -- add current timestamp\nredis.call('EXPIRE', key, window / 1000)\nreturn 1  -- allowed\n```"
+    },
+    {
+      "type": "comparison",
+      "title": "Algorithm Comparison",
+      "columns": ["Algorithm", "Burst?", "Accuracy", "Memory", "Complexity"],
+      "rows": [
+        { "Algorithm": "Fixed Window", "Burst?": "Edge spikes", "Accuracy": "Low", "Memory": "O(1)", "Complexity": "Simple" },
+        { "Algorithm": "Sliding Window Log", "Burst?": "No", "Accuracy": "Exact", "Memory": "O(requests)", "Complexity": "Medium" },
+        { "Algorithm": "Sliding Window Counter", "Burst?": "Slight edge", "Accuracy": "~Approximate", "Memory": "O(1)", "Complexity": "Medium" },
+        { "Algorithm": "Token Bucket", "Burst?": "Yes (controlled)", "Accuracy": "High", "Memory": "O(1)", "Complexity": "Medium" },
+        { "Algorithm": "Leaky Bucket", "Burst?": "No", "Accuracy": "High", "Memory": "O(queue)", "Complexity": "Medium" }
+      ]
+    },
+    {
+      "type": "quiz",
+      "question": "What is the edge spike problem with fixed window rate limiting?",
+      "options": [
+        "The counter resets too slowly causing requests to pile up",
+        "A user can send 2x the limit in a short period by sending max requests at the end of one window and the start of the next",
+        "Fixed windows don't work with distributed systems",
+        "The window size is too large for fast APIs"
+      ],
+      "answer": 1,
+      "explanation": "With a 100 req/min fixed window, a user can send 100 requests at 0:59:59 (end of window 1) and 100 more at 1:00:01 (start of window 2). Both windows are within their limit, but the user sent 200 requests in 2 seconds. Sliding window algorithms prevent this by tracking requests over a rolling time window."
+    }
+  ]
+}

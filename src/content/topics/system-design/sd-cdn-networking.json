@@ -1,0 +1,42 @@
+{
+  "id": "sd-cdn-networking",
+  "title": "CDN, DNS & Networking",
+  "track": "system-design",
+  "summary": "How CDNs work, DNS resolution, TCP/IP fundamentals, anycast, and network-level optimizations.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## Content Delivery Networks (CDN)\n\nA CDN is a geographically distributed network of servers (PoPs — Points of Presence) that cache content close to users. Instead of every request crossing oceans to reach your origin server, it's served from the nearest PoP.\n\n**What CDNs serve:**\n- Static assets (images, CSS, JS, fonts)\n- Video/streaming content\n- API responses (with proper cache headers)\n- Full web pages (edge-side rendering)"
+    },
+    {
+      "type": "diagram",
+      "title": "CDN Request Flow",
+      "content": "graph LR\n    U1[User in Tokyo] -->|1. Request| PoP1[CDN PoP Tokyo]\n    U2[User in London] -->|1. Request| PoP2[CDN PoP London]\n    PoP1 -->|2. Cache HIT| U1\n    PoP2 -->|2. Cache MISS| Origin[Origin Server\\nUS East]\n    Origin -->|3. Fetch & cache| PoP2\n    PoP2 -->|4. Serve| U2\n    style PoP1 fill:#059669,color:#fff\n    style Origin fill:#4f46e5,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## DNS Resolution\n\nDNS translates human-readable domain names to IP addresses. Resolution is hierarchical and cached.\n\n```\nBrowser: What is the IP of api.example.com?\n\n1. Check browser cache → miss\n2. Check OS cache (hosts file) → miss  \n3. Query Recursive Resolver (ISP or 8.8.8.8)\n4. Recursive Resolver queries:\n   a. Root nameserver → \"Try .com nameservers\"\n   b. .com TLD nameserver → \"Try example.com nameservers\"\n   c. example.com nameserver → \"api.example.com = 1.2.3.4\"\n5. Return 1.2.3.4, cache with TTL\n```\n\n### DNS Record Types\n| Record | Purpose | Example |\n|---|---|---|\n| **A** | Domain → IPv4 | api.example.com → 1.2.3.4 |\n| **AAAA** | Domain → IPv6 | api.example.com → 2001:db8::1 |\n| **CNAME** | Domain → Domain | www → example.com |\n| **MX** | Mail server | → mail.example.com |\n| **TXT** | Arbitrary text | SPF, DKIM verification |\n| **NS** | Nameserver delegation | example.com → ns1.example.com |"
+    },
+    {
+      "type": "diagram",
+      "title": "DNS Resolution Hierarchy",
+      "content": "graph TD\n    Browser -->|1. query| Resolver[Recursive Resolver\\n8.8.8.8]\n    Resolver -->|2. who handles .com?| Root[Root Nameserver]\n    Root -->|3. try a.gtld-servers.net| Resolver\n    Resolver -->|4. who handles example.com?| TLD[.com TLD Nameserver]\n    TLD -->|5. try ns1.example.com| Resolver\n    Resolver -->|6. what is api.example.com?| Auth[example.com\\nAuthoritative NS]\n    Auth -->|7. 1.2.3.4 TTL 300| Resolver\n    Resolver -->|8. 1.2.3.4| Browser\n    style Auth fill:#4f46e5,color:#fff\n    style Browser fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## TCP Fundamentals\n\n### Three-way Handshake\n```\nClient → SYN        → Server   (I want to connect)\nClient ← SYN-ACK    ← Server   (OK, I'm ready)\nClient → ACK        → Server   (Great, let's go)\n         [data transfer]\nClient → FIN        → Server   (I'm done)\nClient ← FIN-ACK    ← Server   (Acknowledged)\n```\n\n### HTTP/1.1 vs HTTP/2 vs HTTP/3\n| Version | Key Improvement |\n|---|---|\n| HTTP/1.1 | Persistent connections, keep-alive |\n| HTTP/2 | Multiplexing (multiple requests on 1 TCP connection), header compression |\n| HTTP/3 | Built on QUIC (UDP-based), eliminates TCP head-of-line blocking |\n\n## Anycast\n\nAnycast routes traffic to the **nearest node** that shares the same IP address — used by CDNs and DNS providers (Cloudflare's 1.1.1.1, Google's 8.8.8.8) for global distribution without client-side configuration."
+    },
+    {
+      "type": "quiz",
+      "question": "What is the main performance benefit of HTTP/2 over HTTP/1.1?",
+      "options": [
+        "HTTP/2 uses UDP instead of TCP",
+        "HTTP/2 supports multiplexing — multiple requests/responses over a single TCP connection simultaneously",
+        "HTTP/2 eliminates DNS lookups",
+        "HTTP/2 compresses response bodies more efficiently"
+      ],
+      "answer": 1,
+      "explanation": "HTTP/1.1 requires separate TCP connections for parallel requests (or serial requests per connection). HTTP/2 multiplexing allows multiple request/response streams over a single connection simultaneously, eliminating connection overhead and head-of-line blocking at the HTTP layer."
+    }
+  ]
+}

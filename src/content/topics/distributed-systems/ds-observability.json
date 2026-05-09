@@ -1,0 +1,46 @@
+{
+  "id": "ds-observability",
+  "title": "Observability",
+  "track": "distributed-systems",
+  "summary": "Three pillars of observability: metrics, logs, traces. OpenTelemetry, structured logging, distributed tracing, and SLOs.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## The Three Pillars\n\nObservability is the ability to understand the internal state of a system from its external outputs. The three pillars provide complementary views:\n\n- **Metrics** — Aggregated numbers over time. *What is happening?* (error rate, latency p99, CPU %)\n- **Logs** — Discrete events with context. *What happened?* (\"Order 123 failed: card declined\")\n- **Traces** — Request journeys across services. *Where did it happen?* (latency breakdown per service)"
+    },
+    {
+      "type": "diagram",
+      "title": "Three Pillars of Observability",
+      "content": "graph TD\n    O[Observability]\n    O --> M[Metrics\\nCounters, Gauges, Histograms\\nMicrometer → Prometheus → Grafana]\n    O --> L[Logs\\nStructured events\\nLogback → Loki / ELK Stack]\n    O --> T[Traces\\nSpan trees across services\\nOpenTelemetry → Jaeger / Tempo]\n    M --> Alert[Alerting\\nPagerDuty / OpsGenie]\n    T --> Debug[Root cause analysis]\n    L --> Debug\n    style O fill:#4f46e5,color:#fff\n    style Alert fill:#dc2626,color:#fff\n    style Debug fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Metrics\n\nMetrics are numerical measurements collected over time. Four key metric types:\n\n| Type | Description | Example |\n|---|---|---|\n| **Counter** | Only goes up (reset on restart) | requests_total, errors_total |\n| **Gauge** | Can go up or down | active_connections, memory_used |\n| **Histogram** | Samples + sum + count (for percentiles) | request_duration_seconds |\n| **Summary** | Calculated quantiles (expensive) | p50, p95, p99 latency |\n\n```promql\n# Prometheus queries\nrate(http_requests_total[5m])              # requests per second\nhistogram_quantile(0.99, rate(request_duration_seconds_bucket[5m]))  # p99 latency\nsum by (service) (rate(errors_total[5m]))  # errors by service\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Structured Logging\n\nStructured logs (JSON) are machine-parseable and far easier to query than free-text logs:\n\n```java\n// Bad — free text, hard to query\nlog.info(\"Order 123 processed in 45ms for user alice\");\n\n// Good — structured JSON\nlog.info(\"Order processed\",\n    \"orderId\", orderId,\n    \"durationMs\", elapsed,\n    \"userId\", userId,\n    \"status\", \"SUCCESS\");\n// Output: {\"msg\":\"Order processed\",\"orderId\":\"123\",\"durationMs\":45,\"userId\":\"alice\",...}\n```\n\n### MDC (Mapped Diagnostic Context)\n```java\n// Add trace context to all log lines in this request\nMDC.put(\"traceId\", traceId);\nMDC.put(\"userId\", userId);\nMDC.put(\"requestId\", requestId);\n// All subsequent log statements in this thread include these fields\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Distributed Tracing\n\nA trace tracks a single request as it flows through multiple services. It's composed of **spans** — one per service or operation.\n\n```\nTrace: checkout-flow [total: 450ms]\n├─ span: api-gateway [20ms]\n├─ span: order-service [180ms]\n│   ├─ span: validate-cart [30ms]\n│   └─ span: db-write [150ms]\n├─ span: payment-service [200ms]\n│   ├─ span: fraud-check [80ms]\n│   └─ span: stripe-api [120ms]\n└─ span: notification-service [50ms]\n```\n\n### OpenTelemetry (OTel)\nThe vendor-neutral standard for instrumentation:\n\n```java\n// Auto-instrumentation (no code changes)\n// Add -javaagent:opentelemetry-javaagent.jar\n// OTel instruments Spring, JDBC, HTTP clients automatically\n\n// Manual span creation\nSpan span = tracer.spanBuilder(\"processOrder\").startSpan();\ntry (Scope scope = span.makeCurrent()) {\n    span.setAttribute(\"order.id\", orderId);\n    processOrder(orderId);\n} catch (Exception e) {\n    span.recordException(e);\n    span.setStatus(StatusCode.ERROR);\n} finally {\n    span.end();\n}\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "OpenTelemetry Data Flow",
+      "content": "graph LR\n    App[Application\\n+ OTel Agent] -->|OTLP| Collector[OTel Collector]\n    Collector -->|metrics| Prom[Prometheus]\n    Collector -->|traces| Jaeger[Jaeger / Tempo]\n    Collector -->|logs| Loki[Loki]\n    Prom --> Grafana[Grafana]\n    Jaeger --> Grafana\n    Loki --> Grafana\n    style App fill:#4f46e5,color:#fff\n    style Grafana fill:#059669,color:#fff"
+    },
+    {
+      "type": "quiz",
+      "question": "Which observability pillar is best for answering 'Why is the checkout flow slow for some users?'",
+      "options": [
+        "Metrics — look at p99 latency dashboards",
+        "Logs — search for slow checkout log entries",
+        "Traces — follow a specific request's journey through all services to find the slow span",
+        "Alerts — check if any SLO alerts fired"
+      ],
+      "answer": 2,
+      "explanation": "Distributed traces show the complete journey of a specific request across all services with timing for each span. To diagnose why checkout is slow, you'd find a slow trace and examine which service/operation (span) is taking the most time. Metrics tell you that something is slow; traces tell you where."
+    }
+  ]
+}

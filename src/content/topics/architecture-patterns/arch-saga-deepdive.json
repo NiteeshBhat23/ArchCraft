@@ -1,0 +1,46 @@
+{
+  "id": "arch-saga-deepdive",
+  "title": "Saga Pattern Deep Dive",
+  "track": "architecture-patterns",
+  "summary": "Saga orchestration with state machines, compensation design, idempotency, and implementing Sagas with Axon/Temporal.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## Sagas in Detail\n\nA Saga is a sequence of local transactions where each step either completes successfully or triggers compensating transactions for all previous steps. We covered basics in Distributed Transactions — here we go deep on implementation.\n\n**Key design decisions:**\n1. Choreography vs Orchestration (choice of coupling model)\n2. How to handle partial failures and compensation\n3. Idempotency of all steps\n4. State persistence and recovery"
+    },
+    {
+      "type": "diagram",
+      "title": "Saga State Machine — Order Placement",
+      "content": "stateDiagram-v2\n    [*] --> OrderPending: Order Created\n    OrderPending --> InventoryReserving: Reserve Inventory\n    InventoryReserving --> PaymentProcessing: Inventory Reserved\n    InventoryReserving --> OrderCancelled: Inventory Failed\n    PaymentProcessing --> OrderConfirmed: Payment Succeeded\n    PaymentProcessing --> InventoryReleasing: Payment Failed\n    InventoryReleasing --> OrderCancelled: Inventory Released\n    OrderConfirmed --> [*]\n    OrderCancelled --> [*]"
+    },
+    {
+      "type": "markdown",
+      "content": "## Compensation Design\n\nEvery saga step that can succeed must have a compensating transaction that can undo it:\n\n| Forward Step | Compensating Step |\n|---|---|\n| `ReserveInventory` | `ReleaseInventory` |\n| `ChargePayment` | `RefundPayment` |\n| `CreateShipment` | `CancelShipment` |\n| `SendConfirmationEmail` | *(not compensable — use correction email instead)* |\n\n### Compensation must be:\n- **Idempotent** — can be called multiple times safely\n- **Non-failing** — should not throw exceptions (log + alert instead)\n- **Eventually executed** — retry until success, use dead letter queue for permanent failures\n\n```java\n// Compensation step — idempotent\npublic void releaseInventory(String orderId) {\n    Optional<Reservation> res = reservationRepo.findByOrderId(orderId);\n    if (res.isEmpty()) {\n        log.info(\"Inventory already released for order {}\", orderId);\n        return; // idempotent — already done\n    }\n    inventoryService.release(res.get().getProductId(), res.get().getQuantity());\n    reservationRepo.delete(res.get());\n}\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## Implementing with Temporal\n\nTemporal is a workflow engine that handles saga state persistence, retries, and compensation automatically:\n\n```java\n// Temporal Workflow — Saga as code\n@WorkflowInterface\npublic interface OrderSaga {\n    @WorkflowMethod\n    OrderResult execute(PlaceOrderCommand cmd);\n}\n\npublic class OrderSagaImpl implements OrderSaga {\n    \n    private final InventoryActivity inventory = \n        Workflow.newActivityStub(InventoryActivity.class, options);\n    private final PaymentActivity payment = \n        Workflow.newActivityStub(PaymentActivity.class, options);\n\n    @Override\n    public OrderResult execute(PlaceOrderCommand cmd) {\n        String reservationId = null;\n        try {\n            // Forward steps\n            reservationId = inventory.reserve(cmd.getItems());\n            String paymentId = payment.charge(cmd.getPaymentMethod(), cmd.getTotal());\n            return OrderResult.success(paymentId);\n            \n        } catch (InventoryException e) {\n            return OrderResult.failed(\"Inventory unavailable\");\n            \n        } catch (PaymentException e) {\n            // Compensate\n            if (reservationId != null) {\n                inventory.release(reservationId); // automatic retry by Temporal\n            }\n            return OrderResult.failed(\"Payment declined\");\n        }\n    }\n}\n// Temporal automatically persists workflow state — survives crashes!\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "Temporal Workflow Execution Model",
+      "content": "sequenceDiagram\n    participant Client\n    participant Temporal as Temporal Server\n    participant Worker\n    participant DB as Workflow State\n    Client->>Temporal: Start workflow\n    Temporal->>DB: Persist workflow start\n    Temporal->>Worker: Schedule activity 1\n    Worker->>Worker: Execute activity 1\n    Worker-->>Temporal: Complete\n    Temporal->>DB: Persist progress\n    Note over Temporal,DB: Worker crashes here!\n    Temporal->>Worker: Re-schedule activity 2 (state recovered)\n    Worker->>Worker: Execute activity 2\n    Worker-->>Client: Workflow complete"
+    },
+    {
+      "type": "markdown",
+      "content": "## Common Saga Failure Scenarios\n\n### Counterfactual transactions\nA compensating transaction runs but the forward transaction already partially completed:\n\n```\nCharge card → SUCCESS (bank charged)\nSave payment record → CRASH (DB down)\nOn retry: duplicate charge attempt!\n```\n\n**Solution**: Idempotency key\n```java\n// Bank API call includes idempotency key\npaymentGateway.charge(ChargeRequest.builder()\n    .idempotencyKey(\"order-\" + orderId)  // same key on retry\n    .amount(amount)\n    .build());\n// Bank sees same key → returns same result, doesn't double charge\n```\n\n### Pivot transaction\nThe point of no return in a saga — steps before are compensable, steps after are not (e.g., payment charged, shipment created)."
+    },
+    {
+      "type": "quiz",
+      "question": "Why must compensating transactions be idempotent in a Saga?",
+      "options": [
+        "Because compensating transactions are faster when idempotent",
+        "Because the saga executor may retry compensating transactions multiple times due to failures, and running the compensation twice must not cause double-compensation",
+        "Because idempotent compensations don't need to contact external services",
+        "Because Temporal requires idempotency for all workflow steps"
+      ],
+      "answer": 1,
+      "explanation": "If a compensating transaction fails partway through (network timeout, crash), the saga executor will retry it. If releasing inventory is not idempotent, a double-release could release more inventory than was originally reserved. Every compensation must be safe to call multiple times — tracking 'already compensated' state."
+    }
+  ]
+}

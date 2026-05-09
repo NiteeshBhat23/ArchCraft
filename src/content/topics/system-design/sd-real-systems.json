@@ -1,0 +1,51 @@
+{
+  "id": "sd-real-systems",
+  "title": "Real System Designs",
+  "track": "system-design",
+  "summary": "End-to-end architecture walkthroughs: URL shortener, Twitter-like feed, payment system, and notification service.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## How to Approach System Design\n\nA structured framework:\n1. **Clarify requirements** — functional (what it does) + non-functional (scale, latency, availability)\n2. **Estimate scale** — daily active users, reads/writes per second, data volume\n3. **High-level design** — major components, data flow\n4. **Deep dives** — DB schema, critical algorithms, bottlenecks\n5. **Identify trade-offs** — CAP, consistency vs availability"
+    },
+    {
+      "type": "markdown",
+      "content": "## System 1: URL Shortener (bit.ly)\n\n**Requirements:**\n- Shorten long URLs to 7-char codes\n- Redirect short → long in <10ms\n- 100M URLs created/day, 10B redirects/day\n- Analytics (click counts, geo)\n\n**Key design decisions:**\n- 7-char base62 code = 62^7 = 3.5 trillion unique URLs\n- **ID generation**: use distributed ID generator (Snowflake) → base62 encode\n- **Storage**: write URL mapping once → read many times (perfect for cache)\n- **Redirect**: 301 (permanent, browser caches) vs 302 (temporary, every hit counted)"
+    },
+    {
+      "type": "diagram",
+      "title": "URL Shortener Architecture",
+      "content": "graph LR\n    Client -->|POST /shorten| API[API Server]\n    API -->|generate ID| IDGen[Snowflake ID\\nGenerator]\n    IDGen --> API\n    API -->|store mapping| DB[(PostgreSQL\\nid → long_url)]\n    API -->|cache| Redis[(Redis\\nshort → long)]\n    API -->|return| Client\n    Client2 -->|GET /abc1234| API2[API Server]\n    API2 -->|lookup| Redis\n    Redis -->|cache HIT| API2\n    API2 -->|301 redirect| Client2\n    style Redis fill:#dc2626,color:#fff\n    style DB fill:#4f46e5,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## System 2: Twitter-like Feed\n\n**Requirements:**\n- Users post tweets, follow others\n- Home timeline: tweets from people you follow\n- 300M users, 100M tweets/day, 500M timeline reads/day\n\n**Two approaches:**\n\n### Fan-out on Write (Push model)\n- When user tweets, push to all followers' timeline caches\n- ✓ Fast reads (pre-computed)\n- ✗ Slow writes for users with millions of followers (celebrity problem)\n\n### Fan-out on Read (Pull model)\n- When user requests timeline, query all followed users' tweets and merge\n- ✓ Simple writes\n- ✗ Slow reads (N queries per timeline load)\n\n**Twitter's hybrid approach:**\n- Regular users → fan-out on write (push)\n- Celebrities (>X followers) → fan-out on read (pull) + merge at read time"
+    },
+    {
+      "type": "diagram",
+      "title": "Twitter Feed — Hybrid Fan-out",
+      "content": "graph TB\n    Tweet[User posts tweet]\n    Tweet --> Check{Follower count?}\n    Check -->|< 10K followers| FanWrite[Fan-out on Write\\nPush to followers' caches]\n    Check -->|> 10K followers| Store[Store tweet only]\n    Read[User loads feed]\n    Read --> Merge[Merge:\\nPre-computed cache\\n+ celebrity tweets pulled]\n    FanWrite --> Cache[(Redis\\nTimeline Cache)]\n    Store --> DB[(Tweet DB)]\n    Cache --> Merge\n    DB --> Merge\n    style FanWrite fill:#059669,color:#fff\n    style Merge fill:#4f46e5,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## System 3: Payment System\n\n**Requirements:**\n- Process payments, transfer money between accounts\n- Exactly-once: never charge twice, never miss a payment\n- Strong consistency required — money must not be lost\n\n**Key design decisions:**\n- Use **ACID transactions** — not eventual consistency\n- **Idempotency keys** — clients send unique key per payment; server deduplicates\n- **Outbox pattern** — write to DB + outbox table in same transaction; separate worker publishes events\n- **Double-entry bookkeeping** — debit one account, credit another atomically\n\n```\nPayment table:\n| id | from_account | to_account | amount | status | idempotency_key |\n\nLedger entries (double-entry):\n| account_id | amount | type  | payment_id |\n| account_A  | -100   | DEBIT | pay_123    |\n| account_B  | +100   | CREDIT| pay_123    |\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "Payment Flow with Outbox Pattern",
+      "content": "sequenceDiagram\n    participant Client\n    participant API\n    participant DB\n    participant Outbox\n    participant Queue\n    participant Notification\n    Client->>API: POST /payments {amount, idempotency_key}\n    API->>DB: Check idempotency_key exists?\n    DB-->>API: No (new payment)\n    API->>DB: BEGIN TRANSACTION\n    DB->>DB: Debit account A\n    DB->>DB: Credit account B\n    DB->>Outbox: INSERT payment_completed event\n    DB->>DB: COMMIT\n    API-->>Client: 200 {payment_id, status: COMPLETED}\n    Outbox->>Queue: Publish event (async)\n    Queue->>Notification: Send receipt email"
+    },
+    {
+      "type": "quiz",
+      "question": "Why does Twitter use a hybrid fan-out approach instead of pure fan-out-on-write?",
+      "options": [
+        "Pure fan-out-on-write uses too much storage",
+        "Writing to millions of follower caches for celebrity accounts is too slow and expensive",
+        "Pure fan-out-on-read is always faster for all users",
+        "The hybrid approach avoids the need for a cache entirely"
+      ],
+      "answer": 1,
+      "explanation": "Fan-out-on-write becomes prohibitively expensive for celebrity accounts with millions of followers — one tweet would trigger millions of cache writes. The hybrid approach uses fan-out-on-write for regular users (fast reads matter) and fan-out-on-read for celebrities (pull at read time + merge), balancing write cost and read performance."
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "id": "ds-event-sourcing",
+  "title": "Event Sourcing + CQRS",
+  "track": "distributed-systems",
+  "summary": "Event sourcing as the system of record, CQRS read/write separation, projections, and event store design.",
+  "sections": [
+    {
+      "type": "markdown",
+      "content": "## Traditional State vs Event Sourcing\n\n**Traditional**: Store current state — overwrite on each update.\n```sql\nUPDATE account SET balance=500 WHERE id=1  -- old balance gone forever\n```\n\n**Event Sourcing**: Store the sequence of events — derive current state by replaying.\n```\nEvent 1: AccountOpened { balance: 1000 }\nEvent 2: MoneyWithdrawn { amount: 200 }\nEvent 3: MoneyDeposited { amount: 300 }\nEvent 4: MoneyWithdrawn { amount: 600 }\n\nCurrent balance = 1000 - 200 + 300 - 600 = 500\n```\n\nThe **event log is the source of truth**, not a derived table."
+    },
+    {
+      "type": "diagram",
+      "title": "Event Sourcing — State from Events",
+      "content": "graph LR\n    E1[AccountOpened\\n+1000] --> E2[Withdrawn\\n-200]\n    E2 --> E3[Deposited\\n+300]\n    E3 --> E4[Withdrawn\\n-600]\n    E4 --> State[Current State\\nbalance=500]\n    E1 & E2 & E3 & E4 --> Log[Immutable\\nEvent Store]\n    style Log fill:#4f46e5,color:#fff\n    style State fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Benefits of Event Sourcing\n\n- **Complete audit log** — every change is recorded with who, when, why\n- **Time travel** — replay events to see state at any point in time\n- **Event replay** — rebuild projections from scratch\n- **Debugging** — reproduce bugs by replaying exact event sequence\n- **Integration** — other systems consume events (outbox for free)\n- **Business value** — events are meaningful business facts\n\n## Challenges\n\n- **Schema evolution** — events are immutable; must handle old event versions (upcasting)\n- **Eventual consistency** — projections may lag behind\n- **Querying** — can't easily query event-sourced data directly (need projections)\n- **Snapshot optimization** — replaying 10M events to get current state is slow"
+    },
+    {
+      "type": "markdown",
+      "content": "## CQRS — Command Query Responsibility Segregation\n\nSeparate the **write model** (Commands) from the **read model** (Queries).\n\n```\nCommands:  CreateOrder, CancelOrder, ShipOrder → write to event store\nQueries:   GetOrder, ListOrders, SearchOrders → read from optimized projections\n```\n\nThis solves the **impedance mismatch**: the data model optimized for writes is rarely optimal for reads.\n\n```java\n// Command side — rich domain model\n@CommandHandler\npublic void handle(PlaceOrderCommand cmd) {\n    validate(cmd);\n    apply(new OrderPlacedEvent(cmd.getOrderId(), cmd.getItems()));\n}\n\n// Query side — simple read model\n@QueryHandler\npublic OrderSummary handle(GetOrderQuery query) {\n    return orderSummaryRepository.findById(query.getOrderId());\n    // reads from a denormalized, query-optimized table\n}\n```"
+    },
+    {
+      "type": "diagram",
+      "title": "CQRS + Event Sourcing Architecture",
+      "content": "graph LR\n    C[Client]\n    C -->|Command| CH[Command Handler]\n    CH -->|validate + apply| ES[Event Store\\nImmutable log]\n    ES -->|publish| EP[Event Processor]\n    EP -->|update| RM1[Read Model 1\\nOrder Summary Table]\n    EP -->|update| RM2[Read Model 2\\nSearch Index]\n    EP -->|update| RM3[Read Model 3\\nAnalytics]\n    C -->|Query| QH[Query Handler]\n    QH --> RM1\n    style ES fill:#4f46e5,color:#fff\n    style RM1 fill:#059669,color:#fff\n    style RM2 fill:#059669,color:#fff\n    style RM3 fill:#059669,color:#fff"
+    },
+    {
+      "type": "markdown",
+      "content": "## Snapshots\n\nTo avoid replaying all events on every load, periodically create **snapshots** of aggregate state:\n\n```java\n// Every 100 events, save snapshot\nif (aggregate.getVersion() % 100 == 0) {\n    snapshotStore.save(new Snapshot(aggregate.getId(), \n                                    aggregate.getState(), \n                                    aggregate.getVersion()));\n}\n\n// On load: find latest snapshot, then replay only events after it\nSnapshot snap = snapshotStore.findLatest(aggregateId);\nList<Event> events = eventStore.getEventsAfter(aggregateId, snap.getVersion());\n// Replay only recent events on top of snapshot\n```"
+    },
+    {
+      "type": "callout",
+      "variant": "info",
+      "title": "Event Sourcing is not for every domain",
+      "content": "Event sourcing adds significant complexity. It shines for: financial systems (audit trail required), domains where history matters (order lifecycle), collaboration tools, and GDPR compliance (events allow selective deletion). For simple CRUD domains, traditional state storage is usually better."
+    },
+    {
+      "type": "quiz",
+      "question": "What is a projection in Event Sourcing?",
+      "options": [
+        "A snapshot of aggregate state at a specific point in time",
+        "A read model built by processing the event stream to serve specific query needs",
+        "A future event scheduled for execution",
+        "A validation rule applied to incoming commands"
+      ],
+      "answer": 1,
+      "explanation": "A projection is a read model built by subscribing to the event stream and building a query-optimized view. For example, an 'OrderSummary' projection listens for OrderPlaced, OrderShipped, OrderCancelled events and maintains a denormalized table optimized for listing orders. Multiple projections can serve different query needs from the same event stream."
+    }
+  ]
+}
