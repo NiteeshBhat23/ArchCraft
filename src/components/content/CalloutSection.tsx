@@ -40,12 +40,12 @@ export default function CalloutSection({ section }: Props) {
   const title = section.title ?? section.variant.charAt(0).toUpperCase() + section.variant.slice(1);
 
   return (
-    <div className={`my-5 border-l-4 ${v.border} ${v.bg} rounded-r-xl px-5 py-4`}>
-      <div className={`flex items-center gap-2 font-semibold mb-1 ${v.titleColor}`}>
-        <span>{v.icon}</span>
-        <span>{title}</span>
+    <div className={`my-6 border-l-4 ${v.border} ${v.bg} rounded-r-2xl px-5 py-4 shadow-sm`}>
+      <div className={`flex items-center gap-2 font-semibold mb-1.5 ${v.titleColor}`}>
+        <span className="text-base">{v.icon}</span>
+        <span className="text-sm">{title}</span>
       </div>
-      <p className={`text-sm leading-relaxed ${v.textColor}`}>{section.content}</p>
+      <p className={`text-sm leading-[1.75] ${v.textColor}`}>{section.content}</p>
     </div>
   );
 }

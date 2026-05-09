@@ -59,11 +59,11 @@ export default function HomePage() {
         <div className="inline-flex items-center gap-2 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 text-sm font-medium px-4 py-1.5 rounded-full border border-indigo-200 dark:border-indigo-800 mb-5">
           <span>🏛️</span> Architect-Level Learning Platform
         </div>
-        <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 dark:text-white mb-4 leading-tight">
+        <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 dark:text-white mb-4 leading-tight tracking-tight">
           Master Senior &amp; Architect<br />
           <span className="text-indigo-600 dark:text-indigo-400">Engineering Concepts</span>
         </h1>
-        <p className="text-lg text-gray-500 dark:text-gray-400 max-w-2xl mx-auto">
+        <p className="text-lg text-gray-500 dark:text-gray-400 max-w-2xl mx-auto leading-relaxed">
           Deep-dive into JVM internals, distributed systems, DDD, platform engineering and more — all with rich visual diagrams and interactive quizzes.
         </p>
 
@@ -86,7 +86,7 @@ export default function HomePage() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 stagger-children">
         {contentIndex.tracks.map((track) => {
           const c = trackColors[track.id] ?? trackColors['java'];
           const done = track.topics.filter((tp) => completed[tp.id]).length;
@@ -97,7 +97,7 @@ export default function HomePage() {
             <Link
               key={track.id}
               to={`/track/${track.id}`}
-              className={`group block rounded-2xl border ${c.border} ${c.bg} p-6 hover:shadow-lg transition-all duration-200 hover:-translate-y-0.5`}
+              className={`group block rounded-2xl border ${c.border} ${c.bg} p-6 hover:shadow-xl transition-all duration-200 hover:-translate-y-1 active:scale-[0.99]`}
             >
               <div className="flex items-start justify-between mb-4">
                 <span className="text-3xl">{track.icon}</span>
@@ -130,9 +130,9 @@ export default function HomePage() {
         })}
       </div>
 
-      <div className="mt-14 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl p-8 text-white text-center">
+      <div className="mt-14 bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-700 rounded-2xl p-10 text-white text-center shadow-xl shadow-indigo-500/20">
         <h2 className="text-2xl font-bold mb-2">Start with Architecture Patterns</h2>
-        <p className="text-indigo-100 mb-5 text-sm">
+        <p className="text-indigo-200 mb-6 text-sm max-w-md mx-auto leading-relaxed">
           DDD, Hexagonal Architecture, Event-Driven, CQRS, API Gateway, Data Mesh — the essential toolkit for senior architects
         </p>
         <Link

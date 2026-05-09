@@ -29,7 +29,7 @@ export default function TrackPage() {
   const accent = trackAccent[track.id] ?? 'from-indigo-500 to-indigo-600';
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-10">
+    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10">
       <Link
         to="/"
         className="inline-flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 mb-6 transition-colors"
@@ -40,7 +40,7 @@ export default function TrackPage() {
         All tracks
       </Link>
 
-      <div className={`bg-gradient-to-r ${accent} rounded-2xl p-7 text-white mb-8`}>
+      <div className={`bg-gradient-to-br ${accent} rounded-2xl p-8 text-white mb-8 shadow-lg`}>
         <div className="text-4xl mb-3">{track.icon}</div>
         <h1 className="text-2xl font-bold mb-2">{track.title}</h1>
         <p className="text-white/80 text-sm mb-5">{track.description}</p>
@@ -55,7 +55,7 @@ export default function TrackPage() {
         </div>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-2.5 stagger-children">
         {track.topics.map((tp, idx) => {
           const isCompleted = !!completed[tp.id];
           const isBookmarked = !!bookmarks[tp.id];
@@ -63,13 +63,13 @@ export default function TrackPage() {
           return (
             <div
               key={tp.id}
-              className={`group flex items-center gap-4 p-4 rounded-xl border transition-all duration-150 ${
+              className={`group flex items-center gap-4 p-4 rounded-xl border transition-all duration-200 ${
                 isCompleted
                   ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800'
-                  : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 hover:border-indigo-300 dark:hover:border-indigo-700 hover:shadow-sm'
+                  : 'bg-white dark:bg-gray-900/80 border-gray-200 dark:border-gray-800 hover:border-indigo-300 dark:hover:border-indigo-600 hover:shadow-md hover:-translate-y-px'
               }`}
             >
-              <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-sm font-bold">
+              <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-sm font-bold group-hover:bg-indigo-50 dark:group-hover:bg-indigo-950/40 transition-colors">
                 {isCompleted ? (
                   <svg className="w-4 h-4 text-emerald-500" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
@@ -81,7 +81,7 @@ export default function TrackPage() {
 
               <Link to={`/topic/${tp.id}`} className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium text-gray-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                  <span className="font-semibold text-gray-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                     {tp.title}
                   </span>
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${levelColors[tp.level]}`}>
@@ -89,7 +89,7 @@ export default function TrackPage() {
                   </span>
                 </div>
                 <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-400 dark:text-gray-500">
-                  <span>⏱ {tp.readTime} min</span>
+                  <span className="flex items-center gap-1">⏱ {tp.readTime} min read</span>
                   {tp.tags.slice(0, 3).map((tag) => (
                     <span key={tag} className="bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded">
                       {tag}
@@ -114,9 +114,9 @@ export default function TrackPage() {
 
               <Link
                 to={`/topic/${tp.id}`}
-                className="flex-shrink-0 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium rounded-lg transition-colors"
+                className="flex-shrink-0 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-semibold rounded-lg transition-all"
               >
-                {isCompleted ? 'Review' : 'Study'}
+                {isCompleted ? 'Review' : 'Study →'}
               </Link>
             </div>
           );

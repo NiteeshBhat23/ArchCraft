@@ -61,8 +61,8 @@ export default function TopicPage() {
   const accentColor = trackAccent[meta.trackId] ?? 'text-indigo-600 dark:text-indigo-400';
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8">
-      <div className="flex items-center gap-2 mb-6 flex-wrap">
+    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10">
+      <div className="flex items-center gap-2 mb-8 flex-wrap">
         <Link to="/" className="text-sm text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
           Home
         </Link>
@@ -74,7 +74,7 @@ export default function TopicPage() {
         <span className="text-sm text-gray-600 dark:text-gray-400 truncate">{meta.title}</span>
       </div>
 
-      <div className="mb-8">
+      <div className="mb-10 pb-8 border-b border-gray-200 dark:border-gray-800">
         <div className="flex flex-wrap items-center gap-2 mb-3">
           <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${levelColors[meta.level]}`}>
             {meta.level}
@@ -86,7 +86,7 @@ export default function TopicPage() {
             </span>
           ))}
         </div>
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{meta.title}</h1>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-3 tracking-tight leading-tight">{meta.title}</h1>
 
         {meta.prerequisites.length > 0 && (
           <div className="flex items-center gap-2 mt-3 flex-wrap">
@@ -109,7 +109,7 @@ export default function TopicPage() {
         <div className="flex items-center gap-2 mt-4">
           <button
             onClick={() => isCompleted ? markIncomplete(topicId!) : markComplete(topicId!)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all active:scale-95 ${
               isCompleted
                 ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900/60'
                 : 'bg-indigo-600 hover:bg-indigo-700 text-white'
@@ -143,7 +143,7 @@ export default function TopicPage() {
         </div>
       </div>
 
-      <div className="min-h-64">
+      <div className="min-h-64 animate-slideUp">
         {loading && (
           <div className="space-y-4">
             {[...Array(5)].map((_, i) => (
@@ -165,12 +165,12 @@ export default function TopicPage() {
         )}
       </div>
 
-      <div className="mt-12 border-t border-gray-200 dark:border-gray-800 pt-6 grid grid-cols-2 gap-4">
+      <div className="mt-14 border-t border-gray-200 dark:border-gray-800 pt-8 grid grid-cols-2 gap-4">
         <div>
           {prev && (
             <Link
               to={`/topic/${prev.id}`}
-              className="group flex flex-col gap-0.5 p-4 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-indigo-300 dark:hover:border-indigo-700 hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-all"
+              className="group flex flex-col gap-0.5 p-4 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-indigo-300 dark:hover:border-indigo-700 hover:bg-gray-50 dark:hover:bg-gray-900/50 hover:shadow-sm transition-all duration-200"
             >
               <span className="text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1">
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
@@ -186,7 +186,7 @@ export default function TopicPage() {
           {next && (
             <Link
               to={`/topic/${next.id}`}
-              className="group flex flex-col gap-0.5 p-4 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-indigo-300 dark:hover:border-indigo-700 hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-all text-right"
+              className="group flex flex-col gap-0.5 p-4 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-indigo-300 dark:hover:border-indigo-700 hover:bg-gray-50 dark:hover:bg-gray-900/50 hover:shadow-sm transition-all duration-200 text-right"
             >
               <span className="text-xs text-gray-400 dark:text-gray-500 flex items-center justify-end gap-1">
                 Next
